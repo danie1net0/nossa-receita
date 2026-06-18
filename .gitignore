@@ -1,4 +1,5 @@
 .env
+.idea/
 data/
 minha-receita
 ~/data/.gitkeep
