@@ -98,4 +98,3 @@ Para facilitar a manutenção, algumas variáveis de ambiente podem ser utilizad
 | `CACHE_SIZE` | Tamanho máximo do cache em MB |
 | `BLOOM_FILTER_SIZE` | Tamanho máximo do bloom filter em MB |
 | `TEST_POSTGRES_URL` | URI de acesso ao banco de dados PostgreSQL para ser utilizado nos testes |
-| `TEST_MONGODB_URL` | URI de acesso ao banco de dados MongoDB para ser utilizado nos testes |

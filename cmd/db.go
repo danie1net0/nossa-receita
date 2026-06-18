@@ -47,16 +47,9 @@ func loadDatabase(args *DatabaseArgs) (database, error) {
 	if args.URI == "" {
 		return nil, fmt.Errorf("could not find a database URI, set the DATABASE_URL environment variable with the credentials for a database")
 	}
-	if strings.HasPrefix(args.URI, "postgres://") || strings.HasPrefix(args.URI, "postgresql://") {
-		db, err := db.NewPostgreSQL(args.URI, args.PostgresSchema, args.PostgresLogged)
-		return &db, err
+	if !strings.HasPrefix(args.URI, "postgres://") && !strings.HasPrefix(args.URI, "postgresql://") {
+		return nil, fmt.Errorf("database uri does not seem to be a valid PostgreSQL URI")
 	}
-	if args.PostgresLogged {
-		return nil, fmt.Errorf("the --logged flag is only available for PostgreSQL databases")
-	}
-	if strings.HasPrefix(args.URI, "mongodb://") {
-		db, err := db.NewMongoDB(args.URI)
-		return &db, err
-	}
-	return nil, fmt.Errorf("database uri does not seem to be a valid Postgres or MongoDB URI")
+	db, err := db.NewPostgreSQL(args.URI, args.PostgresSchema, args.PostgresLogged)
+	return &db, err
 }

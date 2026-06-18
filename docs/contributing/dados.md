@@ -15,4 +15,4 @@ Para o desenvolvimento, os testes cobrem os pontos mais importantes e podem ser 
 $ go test --race ./...
 ```
 
-Inconsistências podem acontecer no banco de dados de testes, e `./minha-receita drop` usando `$TEST_POSTGRES_URL` e `$TEST_MONGODB_URL` é uma boa forma de evitar isso.
+Inconsistências podem acontecer no banco de dados de testes, e `./minha-receita drop` usando `$TEST_POSTGRES_URL` é uma boa forma de evitar isso.

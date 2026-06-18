@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"strings"
 
 	"codeberg.org/cuducos/minha-receita/transform"
 	"github.com/spf13/cobra"
@@ -66,11 +64,7 @@ func transformCLI() *cobra.Command {
 		"maximum parallel database queries",
 	)
 
-	u := os.Getenv("DATABASE_URL")
-	batchSize = min(transform.MongoDBBatchSize, transform.PostgresBatchSize) // start with the lower one
-	if strings.HasPrefix(u, "postgres://") || strings.HasPrefix(u, "postgresql://") {
-		batchSize = transform.PostgresBatchSize
-	}
+	batchSize = transform.PostgresBatchSize
 
 	transformCmd.Flags().BoolVarP(&cleanUp, "clean-up", "c", cleanUp, "drop & recreate the database table before starting")
 	transformCmd.Flags().IntVarP(&batchSize, "batch-size", "b", batchSize, "size of the batch to save to the database")

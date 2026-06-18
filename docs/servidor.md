@@ -2,18 +2,15 @@
 
 ## Banco de dados
 
-O projeto requer um banco de dados PostgreSQL ou MongoDB e os comandos que requerem banco de dados aceitam `--database-uri` (ou `-u`) como argumento com a URI de acesso ao banco de dados (o padrão é o valor da variável de ambiente `DATABASE_URL`).
+O projeto requer um banco de dados PostgreSQL e os comandos que requerem banco de dados aceitam `--database-uri` (ou `-u`) como argumento com a URI de acesso ao banco de dados (o padrão é o valor da variável de ambiente `DATABASE_URL`).
 
 Caso deseje usar o Docker Compose do projeto para subir uma instância do banco de dados:
 
 ```console
 $ docker compose up -d postgres
-$ docker compose up -d mongo
 ```
 
-Usando PostgreSQL, a URI será `postgres://minhareceita:minhareceita@localhost:5432/minhareceita?sslmode=disable`.
-
-Usando MongoDB, a URI será `mongodb://minhareceita:minhareceita@localhost:27017/minhareceita?authSource=admin`.
+A URI será `postgres://minhareceita:minhareceita@localhost:5432/minhareceita?sslmode=disable`.
 
 ### Provisionando o banco de dados
 

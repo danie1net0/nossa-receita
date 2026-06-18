@@ -88,18 +88,7 @@ func TestRetrieve(t *testing.T) {
 		}
 		pg.Close()
 	}()
-	m, err := setUpMongo(id, c)
-	if err != nil {
-		t.Errorf("expected no error setting up mongo, got %s", err)
-		return
-	}
-	defer func() {
-		if err := m.Drop(); err != nil {
-			t.Errorf("expected no error dropping the collections, got %s", err)
-		}
-		m.Close()
-	}()
-	for _, db := range []database{pg, m} {
+	for _, db := range []database{pg} {
 		t.Run(fmt.Sprintf("%T", db), func(t *testing.T) {
 			got, err := db.GetCompany(context.Background(), "33683111000280")
 			if err != nil {
@@ -151,17 +140,6 @@ func TestSearch(t *testing.T) {
 		}
 		pg.Close()
 	}()
-	m, err := setUpMongo(id, c)
-	if err != nil {
-		t.Errorf("expected no error setting up mongo, got %s", err)
-		return
-	}
-	defer func() {
-		if err := m.Drop(); err != nil {
-			t.Errorf("expected no error dropping the collections, got %s", err)
-		}
-		m.Close()
-	}()
 	for _, tc := range []testCase{
 		{map[string][]string{"uf": {"sc"}}, 0},
 		{map[string][]string{"uf": {"sp"}}, 1},
@@ -185,7 +163,7 @@ func TestSearch(t *testing.T) {
 		{map[string][]string{"cnpf": {"***112108**"}}, 1},
 		{map[string][]string{"cnpf": {"21449073000135", "***112108**"}}, 1},
 	} {
-		for _, db := range []database{pg, m} {
+		for _, db := range []database{pg} {
 			t.Run(tc.name(db), func(t *testing.T) {
 				q := NewQuery(tc.params)
 				s, err := db.Search(context.Background(), q)

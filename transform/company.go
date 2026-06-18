@@ -29,83 +29,83 @@ func maskCPF(name string) string {
 }
 
 type CNAE struct {
-	Codigo    int    `json:"codigo" bson:"codigo"`
-	Descricao string `json:"descricao" bson:"descricao"`
+	Codigo    int    `json:"codigo"`
+	Descricao string `json:"descricao"`
 }
 
 type TaxRegime struct {
-	Ano                       int     `json:"ano" bson:"ano"`
-	CNPJDaSCP                 *string `json:"cnpj_da_scp" bson:"cnpj_da_scp"`
-	FormaDeTributação         string  `json:"forma_de_tributacao" bson:"forma_de_tributacao"`
-	QuantidadeDeEscrituracoes int     `json:"quantidade_de_escrituracoes" bson:"quantidade_de_escrituracoes"`
+	Ano                       int     `json:"ano"`
+	CNPJDaSCP                 *string `json:"cnpj_da_scp"`
+	FormaDeTributação         string  `json:"forma_de_tributacao"`
+	QuantidadeDeEscrituracoes int     `json:"quantidade_de_escrituracoes"`
 }
 
 type Partner struct {
-	IdentificadorDeSocio                 *int    `json:"identificador_de_socio" bson:"identificador_de_socio"`
-	NomeSocio                            string  `json:"nome_socio" bson:"nome_socio"`
-	CNPJCPFDoSocio                       string  `json:"cnpj_cpf_do_socio" bson:"cnpj_cpf_do_socio"`
-	CodigoQualificacaoSocio              *int    `json:"codigo_qualificacao_socio" bson:"codigo_qualificacao_socio"`
-	QualificaoSocio                      *string `json:"qualificacao_socio" bson:"qualificacao_socio"`
-	DataEntradaSociedade                 *date   `json:"data_entrada_sociedade" bson:"data_entrada_sociedade"`
-	CodigoPais                           *int    `json:"codigo_pais" bson:"codigo_pais"`
-	Pais                                 *string `json:"pais" bson:"pais"`
-	CPFRepresentanteLegal                string  `json:"cpf_representante_legal" bson:"cpf_representante_legal"`
-	NomeRepresentanteLegal               string  `json:"nome_representante_legal" bson:"nome_representante_legal"`
-	CodigoQualificacaoRepresentanteLegal *int    `json:"codigo_qualificacao_representante_legal" bson:"codigo_qualificacao_representante_legal"`
-	QualificacaoRepresentanteLegal       *string `json:"qualificacao_representante_legal" bson:"qualificacao_representante_legal"`
-	CodigoFaixaEtaria                    *int    `json:"codigo_faixa_etaria" bson:"codigo_faixa_etaria"`
-	FaixaEtaria                          *string `json:"faixa_etaria" bson:"faixa_etaria"`
+	IdentificadorDeSocio                 *int    `json:"identificador_de_socio"`
+	NomeSocio                            string  `json:"nome_socio"`
+	CNPJCPFDoSocio                       string  `json:"cnpj_cpf_do_socio"`
+	CodigoQualificacaoSocio              *int    `json:"codigo_qualificacao_socio"`
+	QualificaoSocio                      *string `json:"qualificacao_socio"`
+	DataEntradaSociedade                 *date   `json:"data_entrada_sociedade"`
+	CodigoPais                           *int    `json:"codigo_pais"`
+	Pais                                 *string `json:"pais"`
+	CPFRepresentanteLegal                string  `json:"cpf_representante_legal"`
+	NomeRepresentanteLegal               string  `json:"nome_representante_legal"`
+	CodigoQualificacaoRepresentanteLegal *int    `json:"codigo_qualificacao_representante_legal"`
+	QualificacaoRepresentanteLegal       *string `json:"qualificacao_representante_legal"`
+	CodigoFaixaEtaria                    *int    `json:"codigo_faixa_etaria"`
+	FaixaEtaria                          *string `json:"faixa_etaria"`
 }
 
 type Company struct {
-	CNPJ                             string      `json:"cnpj" bson:"cnpj"`
-	IdentificadorMatrizFilial        *int        `json:"identificador_matriz_filial" bson:"identificador_matriz_filial"`
-	DescricaoMatrizFilial            *string     `json:"descricao_identificador_matriz_filial" bson:"descricao_identificador_matriz_filial"`
-	NomeFantasia                     string      `json:"nome_fantasia" bson:"nome_fantasia"`
-	SituacaoCadastral                *int        `json:"situacao_cadastral" bson:"situacao_cadastral"`
-	DescricaoSituacaoCadastral       *string     `json:"descricao_situacao_cadastral" bson:"descricao_situacao_cadastral"`
-	DataSituacaoCadastral            *date       `json:"data_situacao_cadastral" bson:"data_situacao_cadastral"`
-	MotivoSituacaoCadastral          *int        `json:"motivo_situacao_cadastral" bson:"motivo_situacao_cadastral"`
-	DescricaoMotivoSituacaoCadastral *string     `json:"descricao_motivo_situacao_cadastral" bson:"descricao_motivo_situacao_cadastral"`
-	NomeCidadeNoExterior             string      `json:"nome_cidade_no_exterior" bson:"nome_cidade_no_exterior"`
-	CodigoPais                       *int        `json:"codigo_pais" bson:"codigo_pais"`
-	Pais                             *string     `json:"pais" bson:"pais"`
-	DataInicioAtividade              *date       `json:"data_inicio_atividade" bson:"data_inicio_atividade"`
-	CNAEFiscal                       *int        `json:"cnae_fiscal" bson:"cnae_fiscal"`
-	CNAEFiscalDescricao              *string     `json:"cnae_fiscal_descricao" bson:"cnae_fiscal_descricao"`
-	DescricaoTipoDeLogradouro        string      `json:"descricao_tipo_de_logradouro" bson:"descricao_tipo_de_logradouro"`
-	Logradouro                       string      `json:"logradouro" bson:"logradouro"`
-	Numero                           string      `json:"numero" bson:"numero"`
-	Complemento                      string      `json:"complemento" bson:"complemento"`
-	Bairro                           string      `json:"bairro" bson:"bairro"`
-	CEP                              string      `json:"cep" bson:"cep"`
-	UF                               string      `json:"uf" bson:"uf"`
-	CodigoMunicipio                  *int        `json:"codigo_municipio" bson:"codigo_municipio"`
-	CodigoMunicipioIBGE              *int        `json:"codigo_municipio_ibge" bson:"codigo_municipio_ibge"`
-	Municipio                        *string     `json:"municipio" bson:"municipio"`
-	Telefone1                        string      `json:"ddd_telefone_1" bson:"ddd_telefone_1"`
-	Telefone2                        string      `json:"ddd_telefone_2" bson:"ddd_telefone_2"`
-	Fax                              string      `json:"ddd_fax" bson:"ddd_fax"`
-	Email                            *string     `json:"email" bson:"email"`
-	SituacaoEspecial                 string      `json:"situacao_especial" bson:"situacao_especial"`
-	DataSituacaoEspecial             *date       `json:"data_situacao_especial" bson:"data_situacao_especial"`
-	OpcaoPeloSimples                 *bool       `json:"opcao_pelo_simples" bson:"opcao_pelo_simples"`
-	DataOpcaoPeloSimples             *date       `json:"data_opcao_pelo_simples" bson:"data_opcao_pelo_simples"`
-	DataExclusaoDoSimples            *date       `json:"data_exclusao_do_simples" bson:"data_exclusao_do_simples"`
-	OpcaoPeloMEI                     *bool       `json:"opcao_pelo_mei" bson:"opcao_pelo_mei"`
-	DataOpcaoPeloMEI                 *date       `json:"data_opcao_pelo_mei" bson:"data_opcao_pelo_mei"`
-	DataExclusaoDoMEI                *date       `json:"data_exclusao_do_mei" bson:"data_exclusao_do_mei"`
-	RazaoSocial                      string      `json:"razao_social" bson:"razao_social"`
-	CodigoNaturezaJuridica           *int        `json:"codigo_natureza_juridica" bson:"codigo_natureza_juridica"`
-	NaturezaJuridica                 *string     `json:"natureza_juridica" bson:"natureza_juridica"`
-	QualificacaoDoResponsavel        *int        `json:"qualificacao_do_responsavel" bson:"qualificacao_do_responsavel"`
-	CapitalSocial                    *float32    `json:"capital_social" bson:"capital_social"`
-	CodigoPorte                      *int        `json:"codigo_porte" bson:"codigo_porte"`
-	Porte                            *string     `json:"porte" bson:"porte"`
-	EnteFederativoResponsavel        string      `json:"ente_federativo_responsavel" bson:"ente_federativo_responsavel"`
-	QuadroSocietario                 []Partner   `json:"qsa" bson:"qsa"`
-	CNAESecundarios                  []CNAE      `json:"cnaes_secundarios" bson:"cnaes_secundarios"`
-	RegimeTributario                 []TaxRegime `json:"regime_tributario" bson:"regime_tributario"`
+	CNPJ                             string      `json:"cnpj"`
+	IdentificadorMatrizFilial        *int        `json:"identificador_matriz_filial"`
+	DescricaoMatrizFilial            *string     `json:"descricao_identificador_matriz_filial"`
+	NomeFantasia                     string      `json:"nome_fantasia"`
+	SituacaoCadastral                *int        `json:"situacao_cadastral"`
+	DescricaoSituacaoCadastral       *string     `json:"descricao_situacao_cadastral"`
+	DataSituacaoCadastral            *date       `json:"data_situacao_cadastral"`
+	MotivoSituacaoCadastral          *int        `json:"motivo_situacao_cadastral"`
+	DescricaoMotivoSituacaoCadastral *string     `json:"descricao_motivo_situacao_cadastral"`
+	NomeCidadeNoExterior             string      `json:"nome_cidade_no_exterior"`
+	CodigoPais                       *int        `json:"codigo_pais"`
+	Pais                             *string     `json:"pais"`
+	DataInicioAtividade              *date       `json:"data_inicio_atividade"`
+	CNAEFiscal                       *int        `json:"cnae_fiscal"`
+	CNAEFiscalDescricao              *string     `json:"cnae_fiscal_descricao"`
+	DescricaoTipoDeLogradouro        string      `json:"descricao_tipo_de_logradouro"`
+	Logradouro                       string      `json:"logradouro"`
+	Numero                           string      `json:"numero"`
+	Complemento                      string      `json:"complemento"`
+	Bairro                           string      `json:"bairro"`
+	CEP                              string      `json:"cep"`
+	UF                               string      `json:"uf"`
+	CodigoMunicipio                  *int        `json:"codigo_municipio"`
+	CodigoMunicipioIBGE              *int        `json:"codigo_municipio_ibge"`
+	Municipio                        *string     `json:"municipio"`
+	Telefone1                        string      `json:"ddd_telefone_1"`
+	Telefone2                        string      `json:"ddd_telefone_2"`
+	Fax                              string      `json:"ddd_fax"`
+	Email                            *string     `json:"email"`
+	SituacaoEspecial                 string      `json:"situacao_especial"`
+	DataSituacaoEspecial             *date       `json:"data_situacao_especial"`
+	OpcaoPeloSimples                 *bool       `json:"opcao_pelo_simples"`
+	DataOpcaoPeloSimples             *date       `json:"data_opcao_pelo_simples"`
+	DataExclusaoDoSimples            *date       `json:"data_exclusao_do_simples"`
+	OpcaoPeloMEI                     *bool       `json:"opcao_pelo_mei"`
+	DataOpcaoPeloMEI                 *date       `json:"data_opcao_pelo_mei"`
+	DataExclusaoDoMEI                *date       `json:"data_exclusao_do_mei"`
+	RazaoSocial                      string      `json:"razao_social"`
+	CodigoNaturezaJuridica           *int        `json:"codigo_natureza_juridica"`
+	NaturezaJuridica                 *string     `json:"natureza_juridica"`
+	QualificacaoDoResponsavel        *int        `json:"qualificacao_do_responsavel"`
+	CapitalSocial                    *float32    `json:"capital_social"`
+	CodigoPorte                      *int        `json:"codigo_porte"`
+	Porte                            *string     `json:"porte"`
+	EnteFederativoResponsavel        string      `json:"ente_federativo_responsavel"`
+	QuadroSocietario                 []Partner   `json:"qsa"`
+	CNAESecundarios                  []CNAE      `json:"cnaes_secundarios"`
+	RegimeTributario                 []TaxRegime `json:"regime_tributario"`
 }
 
 func (c *Company) withPrivacy() {
