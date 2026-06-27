@@ -23,6 +23,7 @@ type database interface {
 	// transform
 	PreLoad() error
 	CreateCompanies(context.Context, [][]string) error
+	CopyRelational(context.Context, string, []string, [][]any) error
 	PostLoad() error
 	MetaSave(string, string) error
 

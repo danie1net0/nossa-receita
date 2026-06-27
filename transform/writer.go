@@ -134,6 +134,22 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 					r := csv.NewReader(charmap.ISO8859_15.NewDecoder().Reader(&b))
 					r.Comma = src.sep
 					var prev int64
+					var estabBuf, cnaeBuf [][]any
+					flushRel := func() error {
+						if len(estabBuf) > 0 {
+							if err := db.CopyRelational(ctx, "estabelecimento", estabelecimentoColumns, estabBuf); err != nil {
+								return err
+							}
+							estabBuf = estabBuf[:0]
+						}
+						if len(cnaeBuf) > 0 {
+							if err := db.CopyRelational(ctx, "estabelecimento_cnae", estabelecimentoCnaeColumns, cnaeBuf); err != nil {
+								return err
+							}
+							cnaeBuf = cnaeBuf[:0]
+						}
+						return nil
+					}
 					for {
 						select {
 						case <-ctx.Done():
@@ -142,7 +158,7 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 							row, err := r.Read()
 							if err != nil {
 								if errors.Is(err, io.EOF) {
-									return nil
+									return flushRel()
 								}
 								return fmt.Errorf("error reading %s: %w", pth, err)
 							}
@@ -155,6 +171,13 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 							c, err := newCompany(log, srcs, kv, row)
 							if err != nil {
 								return fmt.Errorf("could not create company %v: %w", row[:3], err)
+							}
+							estabBuf = append(estabBuf, estabelecimentoRow(c, row))
+							cnaeBuf = append(cnaeBuf, estabelecimentoCnaeRows(c)...)
+							if len(estabBuf) >= batch {
+								if err := flushRel(); err != nil {
+									return err
+								}
 							}
 							if privacy {
 								c.withPrivacy()

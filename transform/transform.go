@@ -82,6 +82,7 @@ var extraCounties = map[int]string{
 type database interface {
 	PreLoad() error
 	CreateCompanies(context.Context, [][]string) error
+	CopyRelational(context.Context, string, []string, [][]any) error
 	PostLoad() error
 	CreateExtraIndexes([]string) error
 	MetaSave(string, string) error
@@ -222,7 +223,10 @@ func transform(dir string, db database, batch, maxDB int, privacy bool, ibgeMuni
 	if err := kv.flush(); err != nil {
 		return fmt.Errorf("could not flush key-value storage: %w", err)
 	}
-	if err := writeJSONs(ctx, srcs, kv, db, maxDB, batch, ext, privacy); err != nil {
+	eg, egctx := errgroup.WithContext(ctx)
+	eg.Go(func() error { return loadRelational(egctx, kv, db) })
+	eg.Go(func() error { return writeJSONs(egctx, srcs, kv, db, maxDB, batch, ext, privacy) })
+	if err := eg.Wait(); err != nil {
 		return err
 	}
 	if err := postLoad(db); err != nil {

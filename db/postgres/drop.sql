@@ -1,2 +1,17 @@
 DROP TABLE IF EXISTS {{ .CompanyTableFullName }} CASCADE;
 DROP TABLE IF EXISTS {{ .MetaTableFullName }} CASCADE;
+
+-- Relational source-of-truth and reference tables (migration phase 2).
+DROP TABLE IF EXISTS empresa CASCADE;
+DROP TABLE IF EXISTS estabelecimento CASCADE;
+DROP TABLE IF EXISTS simples CASCADE;
+DROP TABLE IF EXISTS socio CASCADE;
+DROP TABLE IF EXISTS estabelecimento_cnae CASCADE;
+DROP TABLE IF EXISTS regime_tributario CASCADE;
+DROP TABLE IF EXISTS motivo CASCADE;
+DROP TABLE IF EXISTS pais CASCADE;
+DROP TABLE IF EXISTS cnae CASCADE;
+DROP TABLE IF EXISTS municipio CASCADE;
+DROP TABLE IF EXISTS natureza_juridica CASCADE;
+DROP TABLE IF EXISTS qualificacao CASCADE;
+DROP TABLE IF EXISTS municipio_ibge CASCADE;

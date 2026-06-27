@@ -7,8 +7,9 @@ import (
 )
 
 type testDB struct {
-	lock sync.Mutex
-	data map[string]string
+	lock       sync.Mutex
+	data       map[string]string
+	relational map[string]int
 }
 
 func (db *testDB) PreLoad() error {
@@ -42,6 +43,16 @@ func (db *testDB) MetaSave(key, value string) error {
 	return nil
 }
 
+func (db *testDB) CopyRelational(_ context.Context, table string, _ []string, rows [][]any) error {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	if db.relational == nil {
+		db.relational = make(map[string]int)
+	}
+	db.relational[table] += len(rows)
+	return nil
+}
+
 func TestWriteJSONs(t *testing.T) {
 	ctx := context.Background()
 	srcs := sources()
@@ -71,5 +82,46 @@ func TestWriteJSONs(t *testing.T) {
 	exp := "33683111000280"
 	if _, ok := db.data[exp]; !ok {
 		t.Errorf("expected CNPJ %s to be persisted, got nil", exp)
+	}
+	if got := db.relational["estabelecimento"]; got != 1 {
+		t.Errorf("expected 1 estabelecimento to be persisted, got %d", got)
+	}
+}
+
+func TestLoadRelational(t *testing.T) {
+	ctx := context.Background()
+	kv, err := newBadger(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("expected no error creating badger, got %s", err)
+	}
+	defer func() {
+		if err := kv.db.Close(); err != nil {
+			t.Errorf("expected no error closing badger, got %s", err)
+		}
+	}()
+	loadAllTestSources(t, kv)
+	db := &testDB{}
+	if err := loadRelational(ctx, kv, db); err != nil {
+		t.Fatalf("expected no error loading relational data, got %s", err)
+	}
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	// The sampled Empresas source carries 2 bases, independent of how many have
+	// an establishment in the sampled Estabelecimentos file.
+	if got := db.relational["empresa"]; got != 2 {
+		t.Errorf("expected 2 empresa, got %d", got)
+	}
+	if got := db.relational["cnae"]; got == 0 {
+		t.Error("expected the cnae reference table to be populated")
+	}
+	if got := db.relational["estabelecimento"]; got != 0 {
+		t.Errorf("expected estabelecimento to come from the stage-3 stream, not loadRelational, got %d", got)
+	}
+	total := 0
+	for _, n := range db.relational {
+		total += n
+	}
+	if total == 0 {
+		t.Error("expected loadRelational to write some rows, got none")
 	}
 }

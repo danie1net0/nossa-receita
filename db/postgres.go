@@ -175,6 +175,15 @@ func (p *PostgreSQL) CreateCompanies(ctx context.Context, batch [][]string) erro
 	return nil
 }
 
+// CopyRelational bulk-loads rows into one of the relational source-of-truth
+// tables (migration phase 2) via COPY.
+func (p *PostgreSQL) CopyRelational(ctx context.Context, table string, columns []string, rows [][]any) error {
+	if _, err := p.pool.CopyFrom(ctx, pgx.Identifier{table}, columns, pgx.CopyFromRows(rows)); err != nil {
+		return fmt.Errorf("error copying %d rows to %s: %w", len(rows), table, err)
+	}
+	return nil
+}
+
 // GetCompany returns the JSON of a company based on a CNPJ number.
 func (p *PostgreSQL) GetCompany(ctx context.Context, id string) (string, error) {
 	rows, err := p.pool.Query(ctx, p.getCompanyQuery, id)
