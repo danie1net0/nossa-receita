@@ -191,33 +191,10 @@ func (c *Company) partners(log *slog.Logger, srcs map[string]*source, kv *kv) er
 			return fmt.Errorf("could not parse CodigoFaixaEtaria for %s: %w", c.CNPJ, err)
 		}
 		if p.CodigoFaixaEtaria != nil {
-			var f string
-			switch *p.CodigoFaixaEtaria {
-			case 1:
-				f = "Entre 0 a 12 anos"
-			case 2:
-				f = "Entre 13 a 20 ano"
-			case 3:
-				f = "Entre 21 a 30 anos"
-			case 4:
-				f = "Entre 31 a 40 anos"
-			case 5:
-				f = "Entre 41 a 50 anos"
-			case 6:
-				f = "Entre 51 a 60 anos"
-			case 7:
-				f = "Entre 61 a 70 anos"
-			case 8:
-				f = "Entre 71 a 80 anos"
-			case 9:
-				f = "Maiores de 80 anos"
-			case 0:
-				f = "Não se aplica"
-			default:
-				log.Error("unknown CodigoFaixaEtaria", "value", *p.CodigoFaixaEtaria)
-			}
-			if f != "" {
+			if f := faixaEtaria(*p.CodigoFaixaEtaria); f != "" {
 				p.FaixaEtaria = &f
+			} else {
+				log.Error("unknown CodigoFaixaEtaria", "value", *p.CodigoFaixaEtaria)
 			}
 		}
 		c.QuadroSocietario = append(c.QuadroSocietario, p)
