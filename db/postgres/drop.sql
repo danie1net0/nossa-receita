@@ -15,3 +15,11 @@ DROP TABLE IF EXISTS municipio CASCADE;
 DROP TABLE IF EXISTS natureza_juridica CASCADE;
 DROP TABLE IF EXISTS qualificacao CASCADE;
 DROP TABLE IF EXISTS municipio_ibge CASCADE;
+
+-- Staging tables (migration phase 4).
+DROP TABLE IF EXISTS empresa_staging CASCADE;
+DROP TABLE IF EXISTS estabelecimento_staging CASCADE;
+DROP TABLE IF EXISTS simples_staging CASCADE;
+DROP TABLE IF EXISTS socio_staging CASCADE;
+DROP TABLE IF EXISTS estabelecimento_cnae_staging CASCADE;
+DROP TABLE IF EXISTS regime_tributario_staging CASCADE;
