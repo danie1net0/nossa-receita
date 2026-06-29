@@ -31,7 +31,7 @@ var (
 		"ddd_telefone_1", "ddd_telefone_2", "ddd_fax", "email",
 		"situacao_especial", "data_situacao_especial", "hash",
 	}
-	estabelecimentoCnaeColumns = []string{"cnpj", "cnae"}
+	estabelecimentoCnaeColumns = []string{"cnpj", "cnae", "ordem"}
 	simplesColumns             = []string{
 		"cnpj_base", "opcao_pelo_simples", "data_opcao_pelo_simples",
 		"data_exclusao_do_simples", "opcao_pelo_mei", "data_opcao_pelo_mei",
@@ -176,7 +176,7 @@ func estabelecimentoCnaeRows(c *Company) [][]any {
 			continue
 		}
 		seen[cnae.Codigo] = struct{}{}
-		rows = append(rows, []any{c.CNPJ, cnae.Codigo})
+		rows = append(rows, []any{c.CNPJ, cnae.Codigo, len(rows)}) // ordem preserves source order
 	}
 	return rows
 }

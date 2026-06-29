@@ -184,6 +184,250 @@ func (p *PostgreSQL) CopyRelational(ctx context.Context, table string, columns [
 	return nil
 }
 
+var _ transform.MaterializeDB = (*PostgreSQL)(nil)
+
+// ReferenceMaps loads the code->description lookups (and the municipal IBGE-code
+// map) from the reference tables, used to resolve documents during
+// materialization.
+func (p *PostgreSQL) ReferenceMaps(ctx context.Context) (*transform.RefMaps, error) {
+	ref := &transform.RefMaps{
+		CNAE:         map[int]string{},
+		Motivo:       map[int]string{},
+		Municipio:    map[int]string{},
+		Pais:         map[int]string{},
+		Natureza:     map[int]string{},
+		Qualificacao: map[int]string{},
+		IBGE:         map[int]int{},
+	}
+	for tbl, m := range map[string]map[int]string{
+		"cnae":              ref.CNAE,
+		"motivo":            ref.Motivo,
+		"municipio":         ref.Municipio,
+		"pais":              ref.Pais,
+		"natureza_juridica": ref.Natureza,
+		"qualificacao":      ref.Qualificacao,
+	} {
+		rows, err := p.pool.Query(ctx, "SELECT codigo, descricao FROM "+tbl)
+		if err != nil {
+			return nil, fmt.Errorf("could not query %s: %w", tbl, err)
+		}
+		for rows.Next() {
+			var code int
+			var desc *string
+			if err := rows.Scan(&code, &desc); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("could not scan %s: %w", tbl, err)
+			}
+			if desc != nil {
+				m[code] = *desc
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("error reading %s: %w", tbl, err)
+		}
+	}
+	rows, err := p.pool.Query(ctx, "SELECT codigo_municipio, codigo_ibge FROM municipio_ibge")
+	if err != nil {
+		return nil, fmt.Errorf("could not query municipio_ibge: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cm int
+		var ibge *int
+		if err := rows.Scan(&cm, &ibge); err != nil {
+			return nil, fmt.Errorf("could not scan municipio_ibge: %w", err)
+		}
+		if ibge != nil {
+			ref.IBGE[cm] = *ibge
+		}
+	}
+	return ref, rows.Err()
+}
+
+// RelationalCompanies reads the stored relational rows for the given CNPJs and
+// returns them assembled per CNPJ (without resolved/derived fields).
+func (p *PostgreSQL) RelationalCompanies(ctx context.Context, ids []string) ([]*transform.RelationalCompany, error) {
+	byCNPJ := make(map[string]*transform.RelationalCompany, len(ids))
+	byBase := make(map[string][]*transform.RelationalCompany)
+
+	rows, err := p.pool.Query(ctx, `SELECT cnpj, cnpj_base, identificador_matriz_filial, nome_fantasia, situacao_cadastral, data_situacao_cadastral, motivo_situacao_cadastral, nome_cidade_no_exterior, codigo_pais, data_inicio_atividade, cnae_fiscal, descricao_tipo_de_logradouro, logradouro, numero, complemento, bairro, cep, uf, codigo_municipio, ddd_telefone_1, ddd_telefone_2, ddd_fax, email, situacao_especial, data_situacao_especial FROM estabelecimento WHERE cnpj = ANY($1)`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("could not query estabelecimento: %w", err)
+	}
+	for rows.Next() {
+		rc := &transform.RelationalCompany{}
+		var base string
+		if err := rows.Scan(&rc.CNPJ, &base, &rc.IdentificadorMatrizFilial, &rc.NomeFantasia, &rc.SituacaoCadastral, &rc.DataSituacaoCadastral, &rc.MotivoSituacaoCadastral, &rc.NomeCidadeNoExterior, &rc.CodigoPais, &rc.DataInicioAtividade, &rc.CNAEFiscal, &rc.DescricaoTipoDeLogradouro, &rc.Logradouro, &rc.Numero, &rc.Complemento, &rc.Bairro, &rc.CEP, &rc.UF, &rc.CodigoMunicipio, &rc.Telefone1, &rc.Telefone2, &rc.Fax, &rc.Email, &rc.SituacaoEspecial, &rc.DataSituacaoEspecial); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("could not scan estabelecimento: %w", err)
+		}
+		byCNPJ[rc.CNPJ] = rc
+		byBase[base] = append(byBase[base], rc)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error reading estabelecimento: %w", err)
+	}
+
+	bases := make([]string, 0, len(byBase))
+	for b := range byBase {
+		bases = append(bases, b)
+	}
+
+	rows, err = p.pool.Query(ctx, `SELECT cnpj_base, razao_social, codigo_natureza_juridica, qualificacao_do_responsavel, capital_social, codigo_porte, ente_federativo_responsavel FROM empresa WHERE cnpj_base = ANY($1)`, bases)
+	if err != nil {
+		return nil, fmt.Errorf("could not query empresa: %w", err)
+	}
+	for rows.Next() {
+		var base, razao, ente string
+		var natureza, qual, porte *int
+		var capital *float64
+		if err := rows.Scan(&base, &razao, &natureza, &qual, &capital, &porte, &ente); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("could not scan empresa: %w", err)
+		}
+		for _, rc := range byBase[base] {
+			rc.RazaoSocial = razao
+			rc.CodigoNaturezaJuridica = natureza
+			rc.QualificacaoDoResponsavel = qual
+			rc.CapitalSocial = capital
+			rc.CodigoPorte = porte
+			rc.EnteFederativoResponsavel = ente
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error reading empresa: %w", err)
+	}
+
+	rows, err = p.pool.Query(ctx, `SELECT cnpj_base, opcao_pelo_simples, data_opcao_pelo_simples, data_exclusao_do_simples, opcao_pelo_mei, data_opcao_pelo_mei, data_exclusao_do_mei FROM simples WHERE cnpj_base = ANY($1)`, bases)
+	if err != nil {
+		return nil, fmt.Errorf("could not query simples: %w", err)
+	}
+	for rows.Next() {
+		var base string
+		var optSimples, optMEI *bool
+		var dOptSimples, dExcSimples, dOptMEI, dExcMEI *time.Time
+		if err := rows.Scan(&base, &optSimples, &dOptSimples, &dExcSimples, &optMEI, &dOptMEI, &dExcMEI); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("could not scan simples: %w", err)
+		}
+		for _, rc := range byBase[base] {
+			rc.OpcaoPeloSimples = optSimples
+			rc.DataOpcaoPeloSimples = dOptSimples
+			rc.DataExclusaoDoSimples = dExcSimples
+			rc.OpcaoPeloMEI = optMEI
+			rc.DataOpcaoPeloMEI = dOptMEI
+			rc.DataExclusaoDoMEI = dExcMEI
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error reading simples: %w", err)
+	}
+
+	rows, err = p.pool.Query(ctx, `SELECT cnpj_base, identificador_de_socio, nome_socio, cnpj_cpf_do_socio, codigo_qualificacao_socio, data_entrada_sociedade, codigo_pais, cpf_representante_legal, nome_representante_legal, codigo_qualificacao_representante_legal, codigo_faixa_etaria FROM socio WHERE cnpj_base = ANY($1)`, bases)
+	if err != nil {
+		return nil, fmt.Errorf("could not query socio: %w", err)
+	}
+	sociosByBase := make(map[string][]transform.RelationalPartner)
+	for rows.Next() {
+		var base string
+		var pr transform.RelationalPartner
+		if err := rows.Scan(&base, &pr.IdentificadorDeSocio, &pr.NomeSocio, &pr.CNPJCPFDoSocio, &pr.CodigoQualificacaoSocio, &pr.DataEntradaSociedade, &pr.CodigoPais, &pr.CPFRepresentanteLegal, &pr.NomeRepresentanteLegal, &pr.CodigoQualificacaoRepresentanteLegal, &pr.CodigoFaixaEtaria); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("could not scan socio: %w", err)
+		}
+		sociosByBase[base] = append(sociosByBase[base], pr)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error reading socio: %w", err)
+	}
+	for base, socios := range sociosByBase {
+		for _, rc := range byBase[base] {
+			rc.Socios = socios
+		}
+	}
+
+	rows, err = p.pool.Query(ctx, `SELECT cnpj, cnae FROM estabelecimento_cnae WHERE cnpj = ANY($1) ORDER BY cnpj, ordem`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("could not query estabelecimento_cnae: %w", err)
+	}
+	for rows.Next() {
+		var cnpj string
+		var cnae int
+		if err := rows.Scan(&cnpj, &cnae); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("could not scan estabelecimento_cnae: %w", err)
+		}
+		if rc, ok := byCNPJ[cnpj]; ok {
+			rc.CNAESecundarios = append(rc.CNAESecundarios, cnae)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error reading estabelecimento_cnae: %w", err)
+	}
+
+	rows, err = p.pool.Query(ctx, `SELECT cnpj, ano, cnpj_da_scp, forma_de_tributacao, quantidade_de_escrituracoes FROM regime_tributario WHERE cnpj = ANY($1)`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("could not query regime_tributario: %w", err)
+	}
+	for rows.Next() {
+		var cnpj string
+		var reg transform.RelationalRegime
+		if err := rows.Scan(&cnpj, &reg.Ano, &reg.CNPJDaSCP, &reg.FormaDeTributacao, &reg.QuantidadeDeEscrituracoes); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("could not scan regime_tributario: %w", err)
+		}
+		if rc, ok := byCNPJ[cnpj]; ok {
+			rc.Regimes = append(rc.Regimes, reg)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error reading regime_tributario: %w", err)
+	}
+
+	out := make([]*transform.RelationalCompany, 0, len(byCNPJ))
+	for _, id := range ids {
+		if rc, ok := byCNPJ[id]; ok {
+			out = append(out, rc)
+		}
+	}
+	return out, nil
+}
+
+// SaveDocuments upserts the materialized JSON documents, updating in place so
+// the cursor (and thus keyset pagination) is preserved.
+func (p *PostgreSQL) SaveDocuments(ctx context.Context, docs map[string]string) error {
+	if len(docs) == 0 {
+		return nil
+	}
+	q := fmt.Sprintf(
+		"INSERT INTO %s (%s, %s) VALUES ($1, $2) ON CONFLICT (%s) DO UPDATE SET %s = EXCLUDED.%s",
+		p.CompanyTableName, idFieldName, jsonFieldName, idFieldName, jsonFieldName, jsonFieldName,
+	)
+	b := &pgx.Batch{}
+	for id, j := range docs {
+		b.Queue(q, id, j)
+	}
+	br := p.pool.SendBatch(ctx, b)
+	defer func() {
+		if err := br.Close(); err != nil {
+			slog.Warn("could not close materialization batch", "error", err)
+		}
+	}()
+	for range docs {
+		if _, err := br.Exec(); err != nil {
+			return fmt.Errorf("could not upsert materialized document: %w", err)
+		}
+	}
+	return nil
+}
+
 // GetCompany returns the JSON of a company based on a CNPJ number.
 func (p *PostgreSQL) GetCompany(ctx context.Context, id string) (string, error) {
 	rows, err := p.pool.Query(ctx, p.getCompanyQuery, id)

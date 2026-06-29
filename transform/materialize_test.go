@@ -6,30 +6,31 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dgraph-io/badger/v4"
 )
 
 // refMapsFromKV builds the reference lookups from the key-value store, standing
 // in for the production load from the PostgreSQL reference tables.
-func refMapsFromKV(t *testing.T, kv *kv) *refMaps {
+func refMapsFromKV(t *testing.T, kv *kv) *RefMaps {
 	t.Helper()
-	ref := &refMaps{
-		cnae:         map[int]string{},
-		motivo:       map[int]string{},
-		municipio:    map[int]string{},
-		pais:         map[int]string{},
-		natureza:     map[int]string{},
-		qualificacao: map[int]string{},
-		ibge:         map[int]int{},
+	ref := &RefMaps{
+		CNAE:         map[int]string{},
+		Motivo:       map[int]string{},
+		Municipio:    map[int]string{},
+		Pais:         map[int]string{},
+		Natureza:     map[int]string{},
+		Qualificacao: map[int]string{},
+		IBGE:         map[int]int{},
 	}
 	strMaps := map[string]map[int]string{
-		"cna": ref.cnae,
-		"mot": ref.motivo,
-		"mun": ref.municipio,
-		"pai": ref.pais,
-		"nat": ref.natureza,
-		"qua": ref.qualificacao,
+		"cna": ref.CNAE,
+		"mot": ref.Motivo,
+		"mun": ref.Municipio,
+		"pai": ref.Pais,
+		"nat": ref.Natureza,
+		"qua": ref.Qualificacao,
 	}
 	err := kv.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
@@ -56,7 +57,7 @@ func refMapsFromKV(t *testing.T, kv *kv) *refMaps {
 				m[*code] = val[0]
 			} else if parts[1] == "tab" && len(val) >= 4 {
 				if ibge, err := toInt(val[3]); err == nil && ibge != nil {
-					ref.ibge[*code] = *ibge
+					ref.IBGE[*code] = *ibge
 				}
 			}
 		}
@@ -68,37 +69,10 @@ func refMapsFromKV(t *testing.T, kv *kv) *refMaps {
 	return ref
 }
 
-// stripResolved returns a deep-enough copy of c with every denormalized and
-// derived field cleared, i.e. only the fields the relational tables store.
-func stripResolved(src *Company) *Company {
-	c := *src
-	c.QuadroSocietario = append([]Partner(nil), src.QuadroSocietario...)
-	c.CNAESecundarios = append([]CNAE(nil), src.CNAESecundarios...)
-	c.RegimeTributario = append([]TaxRegime(nil), src.RegimeTributario...)
-	c.DescricaoMatrizFilial = nil
-	c.DescricaoSituacaoCadastral = nil
-	c.DescricaoMotivoSituacaoCadastral = nil
-	c.Pais = nil
-	c.CNAEFiscalDescricao = nil
-	c.Municipio = nil
-	c.CodigoMunicipioIBGE = nil
-	c.NaturezaJuridica = nil
-	c.Porte = nil
-	for i := range c.QuadroSocietario {
-		c.QuadroSocietario[i].QualificaoSocio = nil
-		c.QuadroSocietario[i].Pais = nil
-		c.QuadroSocietario[i].QualificacaoRepresentanteLegal = nil
-		c.QuadroSocietario[i].FaixaEtaria = nil
-	}
-	for i := range c.CNAESecundarios {
-		c.CNAESecundarios[i].Descricao = ""
-	}
-	return &c
-}
-
-// TestResolveCompany proves the materialization (resolveCompany over the stored
-// relational fields) reproduces the exact document the ETL writes.
-func TestResolveCompany(t *testing.T) {
+// newTestCompany builds the reference Company (via the Badger ETL path) for the
+// sample CNPJ, loading all test sources into kv along the way.
+func newTestCompany(t *testing.T, kv *kv) *Company {
+	t.Helper()
 	row := []string{
 		"33683111",             // 0 CNPJ Base
 		"0002",                 // 1 CNPJ Ordem
@@ -131,6 +105,125 @@ func TestResolveCompany(t *testing.T) {
 		"",             // 28 Situação Especial
 		"",             // 29 Data Situação Especial
 	}
+	loadAllTestSources(t, kv)
+	c, err := newCompany(slog.Default(), sources(), kv, row)
+	if err != nil {
+		t.Fatalf("expected no error creating a company, got %s", err)
+	}
+	return c
+}
+
+// stripResolved returns a copy of c with every denormalized and derived field
+// cleared, i.e. only the fields the relational tables store.
+func stripResolved(src *Company) *Company {
+	c := *src
+	c.QuadroSocietario = append([]Partner(nil), src.QuadroSocietario...)
+	c.CNAESecundarios = append([]CNAE(nil), src.CNAESecundarios...)
+	c.RegimeTributario = append([]TaxRegime(nil), src.RegimeTributario...)
+	c.DescricaoMatrizFilial = nil
+	c.DescricaoSituacaoCadastral = nil
+	c.DescricaoMotivoSituacaoCadastral = nil
+	c.Pais = nil
+	c.CNAEFiscalDescricao = nil
+	c.Municipio = nil
+	c.CodigoMunicipioIBGE = nil
+	c.NaturezaJuridica = nil
+	c.Porte = nil
+	for i := range c.QuadroSocietario {
+		c.QuadroSocietario[i].QualificaoSocio = nil
+		c.QuadroSocietario[i].Pais = nil
+		c.QuadroSocietario[i].QualificacaoRepresentanteLegal = nil
+		c.QuadroSocietario[i].FaixaEtaria = nil
+	}
+	for i := range c.CNAESecundarios {
+		c.CNAESecundarios[i].Descricao = ""
+	}
+	return &c
+}
+
+func timeFromDate(d *date) *time.Time {
+	if d == nil {
+		return nil
+	}
+	t := time.Time(*d)
+	return &t
+}
+
+// relationalFromCompany projects a Company onto the stored relational fields,
+// mirroring what the database layer reads back from the relational tables.
+func relationalFromCompany(c *Company) *RelationalCompany {
+	rc := &RelationalCompany{
+		CNPJ:                      c.CNPJ,
+		IdentificadorMatrizFilial: c.IdentificadorMatrizFilial,
+		NomeFantasia:              c.NomeFantasia,
+		SituacaoCadastral:         c.SituacaoCadastral,
+		DataSituacaoCadastral:     timeFromDate(c.DataSituacaoCadastral),
+		MotivoSituacaoCadastral:   c.MotivoSituacaoCadastral,
+		NomeCidadeNoExterior:      c.NomeCidadeNoExterior,
+		CodigoPais:                c.CodigoPais,
+		DataInicioAtividade:       timeFromDate(c.DataInicioAtividade),
+		CNAEFiscal:                c.CNAEFiscal,
+		DescricaoTipoDeLogradouro: c.DescricaoTipoDeLogradouro,
+		Logradouro:                c.Logradouro,
+		Numero:                    c.Numero,
+		Complemento:               c.Complemento,
+		Bairro:                    c.Bairro,
+		CEP:                       c.CEP,
+		UF:                        c.UF,
+		CodigoMunicipio:           c.CodigoMunicipio,
+		Telefone1:                 c.Telefone1,
+		Telefone2:                 c.Telefone2,
+		Fax:                       c.Fax,
+		Email:                     c.Email,
+		SituacaoEspecial:          c.SituacaoEspecial,
+		DataSituacaoEspecial:      timeFromDate(c.DataSituacaoEspecial),
+		RazaoSocial:               c.RazaoSocial,
+		CodigoNaturezaJuridica:    c.CodigoNaturezaJuridica,
+		QualificacaoDoResponsavel: c.QualificacaoDoResponsavel,
+		CodigoPorte:               c.CodigoPorte,
+		EnteFederativoResponsavel: c.EnteFederativoResponsavel,
+		OpcaoPeloSimples:          c.OpcaoPeloSimples,
+		DataOpcaoPeloSimples:      timeFromDate(c.DataOpcaoPeloSimples),
+		DataExclusaoDoSimples:     timeFromDate(c.DataExclusaoDoSimples),
+		OpcaoPeloMEI:              c.OpcaoPeloMEI,
+		DataOpcaoPeloMEI:          timeFromDate(c.DataOpcaoPeloMEI),
+		DataExclusaoDoMEI:         timeFromDate(c.DataExclusaoDoMEI),
+	}
+	if c.CapitalSocial != nil {
+		f := float64(*c.CapitalSocial)
+		rc.CapitalSocial = &f
+	}
+	for _, p := range c.QuadroSocietario {
+		rc.Socios = append(rc.Socios, RelationalPartner{
+			IdentificadorDeSocio:                 p.IdentificadorDeSocio,
+			NomeSocio:                            p.NomeSocio,
+			CNPJCPFDoSocio:                       p.CNPJCPFDoSocio,
+			CodigoQualificacaoSocio:              p.CodigoQualificacaoSocio,
+			DataEntradaSociedade:                 timeFromDate(p.DataEntradaSociedade),
+			CodigoPais:                           p.CodigoPais,
+			CPFRepresentanteLegal:                p.CPFRepresentanteLegal,
+			NomeRepresentanteLegal:               p.NomeRepresentanteLegal,
+			CodigoQualificacaoRepresentanteLegal: p.CodigoQualificacaoRepresentanteLegal,
+			CodigoFaixaEtaria:                    p.CodigoFaixaEtaria,
+		})
+	}
+	for _, cnae := range c.CNAESecundarios {
+		rc.CNAESecundarios = append(rc.CNAESecundarios, cnae.Codigo)
+	}
+	for _, r := range c.RegimeTributario {
+		rc.Regimes = append(rc.Regimes, RelationalRegime{
+			Ano:                       r.Ano,
+			CNPJDaSCP:                 r.CNPJDaSCP,
+			FormaDeTributacao:         r.FormaDeTributação,
+			QuantidadeDeEscrituracoes: r.QuantidadeDeEscrituracoes,
+		})
+	}
+	return rc
+}
+
+// TestResolveCompany proves the materialization (resolveCompany over the stored
+// relational fields) reproduces the exact document the ETL writes.
+func TestResolveCompany(t *testing.T) {
 	kv, err := newBadger(t.TempDir(), false)
 	if err != nil {
 		t.Fatalf("expected no error creating badger, got %s", err)
@@ -140,12 +233,7 @@ func TestResolveCompany(t *testing.T) {
 			t.Errorf("expected no error closing badger, got %s", err)
 		}
 	}()
-	loadAllTestSources(t, kv)
-	log := slog.Default()
-	expected, err := newCompany(log, sources(), kv, row)
-	if err != nil {
-		t.Fatalf("expected no error creating a company, got %s", err)
-	}
+	expected := newTestCompany(t, kv)
 	pool := &sync.Pool{New: func() any { return &bytes.Buffer{} }}
 	want, err := expected.JSON(pool)
 	if err != nil {
@@ -153,7 +241,39 @@ func TestResolveCompany(t *testing.T) {
 	}
 
 	got := stripResolved(expected)
-	if err := resolveCompany(got, refMapsFromKV(t, kv), log); err != nil {
+	if err := resolveCompany(got, refMapsFromKV(t, kv), slog.Default()); err != nil {
+		t.Fatalf("expected no error resolving the company, got %s", err)
+	}
+	have, err := got.JSON(pool)
+	if err != nil {
+		t.Fatalf("expected no error marshalling the resolved company, got %s", err)
+	}
+	if want != have {
+		t.Errorf("resolved document differs from the ETL output:\nwant: %s\nhave: %s", want, have)
+	}
+}
+
+// TestMaterializeRoundtrip proves that projecting a Company onto the relational
+// fields and rebuilding it (toCompany + resolveCompany) reproduces the document.
+func TestMaterializeRoundtrip(t *testing.T) {
+	kv, err := newBadger(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("expected no error creating badger, got %s", err)
+	}
+	defer func() {
+		if err := kv.db.Close(); err != nil {
+			t.Errorf("expected no error closing badger, got %s", err)
+		}
+	}()
+	expected := newTestCompany(t, kv)
+	pool := &sync.Pool{New: func() any { return &bytes.Buffer{} }}
+	want, err := expected.JSON(pool)
+	if err != nil {
+		t.Fatalf("expected no error marshalling the reference company, got %s", err)
+	}
+
+	got := relationalFromCompany(expected).toCompany()
+	if err := resolveCompany(got, refMapsFromKV(t, kv), slog.Default()); err != nil {
 		t.Fatalf("expected no error resolving the company, got %s", err)
 	}
 	have, err := got.JSON(pool)

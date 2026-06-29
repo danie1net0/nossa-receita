@@ -95,8 +95,9 @@ CREATE TABLE IF NOT EXISTS socio (
 );
 
 CREATE TABLE IF NOT EXISTS estabelecimento_cnae (
-    cnpj char(14) NOT NULL,
-    cnae int NOT NULL,
+    cnpj  char(14) NOT NULL,
+    cnae  int NOT NULL,
+    ordem int NOT NULL, -- position in the source list, so materialization preserves order
     PRIMARY KEY (cnpj, cnae)
 );
 
