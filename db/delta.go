@@ -6,14 +6,6 @@ import (
 	"strings"
 )
 
-// Delta is the result of diffing the staging tables (loaded with the new
-// snapshot) against the live tables: the full CNPJs whose document must be
-// rebuilt, and those whose document must be removed.
-type Delta struct {
-	Rebuild []string
-	Delete  []string
-}
-
 // deleteQuery finds estabelecimentos that exist live but not in staging: their
 // CNPJ was removed from the snapshot, so the document must be deleted.
 const deleteQuery = `
@@ -110,16 +102,37 @@ func (p *PostgreSQL) PrepareStaging() error {
 // ComputeDelta diffs the staging tables against the live tables and returns the
 // CNPJs to rebuild and to delete. It only reads; applying the changes is a
 // separate step.
-func (p *PostgreSQL) ComputeDelta(ctx context.Context) (*Delta, error) {
-	rebuild, err := p.queryCNPJs(ctx, rebuildQuery)
+func (p *PostgreSQL) ComputeDelta(ctx context.Context) (rebuild, deletes []string, err error) {
+	rebuild, err = p.queryCNPJs(ctx, rebuildQuery)
 	if err != nil {
-		return nil, fmt.Errorf("could not compute the rebuild set: %w", err)
+		return nil, nil, fmt.Errorf("could not compute the rebuild set: %w", err)
 	}
-	del, err := p.queryCNPJs(ctx, deleteQuery)
+	deletes, err = p.queryCNPJs(ctx, deleteQuery)
 	if err != nil {
-		return nil, fmt.Errorf("could not compute the delete set: %w", err)
+		return nil, nil, fmt.Errorf("could not compute the delete set: %w", err)
 	}
-	return &Delta{Rebuild: rebuild, Delete: del}, nil
+	return rebuild, deletes, nil
+}
+
+// TruncateReferences empties the reference tables so they can be reloaded from a
+// new snapshot during an incremental update.
+func (p *PostgreSQL) TruncateReferences(ctx context.Context) error {
+	if _, err := p.pool.Exec(ctx, "TRUNCATE cnae, motivo, municipio, pais, natureza_juridica, qualificacao, municipio_ibge"); err != nil {
+		return fmt.Errorf("could not truncate reference tables: %w", err)
+	}
+	return nil
+}
+
+// DeleteDocuments removes the JSONB documents of the given CNPJs.
+func (p *PostgreSQL) DeleteDocuments(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	q := fmt.Sprintf("DELETE FROM %s WHERE %s = ANY($1)", p.CompanyTableName, idFieldName)
+	if _, err := p.pool.Exec(ctx, q, ids); err != nil {
+		return fmt.Errorf("could not delete documents: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgreSQL) queryCNPJs(ctx context.Context, q string, args ...any) ([]string, error) {

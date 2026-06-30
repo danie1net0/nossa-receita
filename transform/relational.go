@@ -241,11 +241,13 @@ func (b *relBatch) flush(ctx context.Context, db database) error {
 // base-keyed, reference and tax-regime relational tables (dual-write). The
 // estabelecimento rows come separately, from the stage-3 stream. It is safe to
 // run concurrently with writeJSONs: it writes a disjoint set of tables.
-func loadRelational(ctx context.Context, kv *kv, db database) error {
-	empresa := &relBatch{table: "empresa", columns: empresaColumns}
-	simples := &relBatch{table: "simples", columns: simplesColumns}
-	socio := &relBatch{table: "socio", columns: socioColumns}
-	regime := &relBatch{table: "regime_tributario", columns: regimeTributarioColumns}
+func loadRelational(ctx context.Context, kv *kv, db database, suffix string) error {
+	// The suffix targets the entity tables (e.g. "_staging" for incremental
+	// updates); reference tables are always written to the live tables.
+	empresa := &relBatch{table: "empresa" + suffix, columns: empresaColumns}
+	simples := &relBatch{table: "simples" + suffix, columns: simplesColumns}
+	socio := &relBatch{table: "socio" + suffix, columns: socioColumns}
+	regime := &relBatch{table: "regime_tributario" + suffix, columns: regimeTributarioColumns}
 	ibge := &relBatch{table: "municipio_ibge", columns: municipioIBGEColumns}
 	refs := map[string]*relBatch{
 		"cna": {table: "cnae", columns: referenceColumns},

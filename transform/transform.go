@@ -158,14 +158,29 @@ func transform(dir string, db database, batch, maxDB int, privacy bool, ibgeMuni
 	if err := db.PreLoad(); err != nil {
 		return err
 	}
+	label, err := loadSnapshot(dir, db, batch, maxDB, privacy, ibgeMunicipalitiesURL, "", true)
+	if err != nil {
+		return err
+	}
+	if err := postLoad(db); err != nil {
+		return err
+	}
+	return saveUpdatedAt(db, label)
+}
+
+// loadSnapshot extracts the source archive, loads the lookup/relational data
+// into the key-value store, then writes the relational tables (and, when
+// writeDoc is set, the JSONB documents). The suffix targets the entity tables
+// (e.g. "_staging"). It returns the snapshot label (YYYY-MM).
+func loadSnapshot(dir string, db database, batch, maxDB int, privacy bool, ibgeMunicipalitiesURL, suffix string, writeDoc bool) (string, error) {
 	srcs := sources()
 	pth, err := findMainZIP(dir)
 	if err != nil {
-		return fmt.Errorf("could not find main zip file in %s: %w", dir, err)
+		return "", fmt.Errorf("could not find main zip file in %s: %w", dir, err)
 	}
 	tmp, err := os.MkdirTemp("", fmt.Sprintf("minha-receita-%s-*", time.Now().Format("20060102150405")))
 	if err != nil {
-		return fmt.Errorf("could not create temporary directory: %w", err)
+		return "", fmt.Errorf("could not create temporary directory: %w", err)
 	}
 	defer func() {
 		if err := os.RemoveAll(tmp); err != nil {
@@ -174,18 +189,18 @@ func transform(dir string, db database, batch, maxDB int, privacy bool, ibgeMuni
 	}()
 	ext := filepath.Join(tmp, "extracted")
 	if err := os.Mkdir(ext, 0700); err != nil {
-		return fmt.Errorf("could not create extraction directory: %w", err)
+		return "", fmt.Errorf("could not create extraction directory: %w", err)
 	}
 	bar, err := newProgressBar("[1/3] Extracting main archive", 1)
 	if err != nil {
-		return fmt.Errorf("could not create a progress bar: %w", err)
+		return "", fmt.Errorf("could not create a progress bar: %w", err)
 	}
 	if err := unzipMainArchive(pth, ext, bar); err != nil {
-		return fmt.Errorf("could not extract %s: %w", pth, err)
+		return "", fmt.Errorf("could not extract %s: %w", pth, err)
 	}
 	kv, err := newBadger(tmp, false)
 	if err != nil {
-		return fmt.Errorf("could not create badger database: %w", err)
+		return "", fmt.Errorf("could not create badger database: %w", err)
 	}
 	defer func() {
 		if err := kv.db.Close(); err != nil {
@@ -194,7 +209,7 @@ func transform(dir string, db database, batch, maxDB int, privacy bool, ibgeMuni
 	}()
 	bar, err = newProgressBar("[2/3] Loading data to key-value storage", len(srcs))
 	if err != nil {
-		return fmt.Errorf("could not create a progress bar: %w", err)
+		return "", fmt.Errorf("could not create a progress bar: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -218,21 +233,18 @@ func transform(dir string, db database, batch, maxDB int, privacy bool, ibgeMuni
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return err
+		return "", err
 	}
 	if err := kv.flush(); err != nil {
-		return fmt.Errorf("could not flush key-value storage: %w", err)
+		return "", fmt.Errorf("could not flush key-value storage: %w", err)
 	}
 	eg, egctx := errgroup.WithContext(ctx)
-	eg.Go(func() error { return loadRelational(egctx, kv, db) })
-	eg.Go(func() error { return writeJSONs(egctx, srcs, kv, db, maxDB, batch, ext, privacy) })
+	eg.Go(func() error { return loadRelational(egctx, kv, db, suffix) })
+	eg.Go(func() error { return writeJSONs(egctx, srcs, kv, db, maxDB, batch, ext, privacy, suffix, writeDoc) })
 	if err := eg.Wait(); err != nil {
-		return err
+		return "", err
 	}
-	if err := postLoad(db); err != nil {
-		return err
-	}
-	return saveUpdatedAt(db, strings.TrimSuffix(filepath.Base(pth), ".zip"))
+	return strings.TrimSuffix(filepath.Base(pth), ".zip"), nil
 }
 
 func Cleanup() error {

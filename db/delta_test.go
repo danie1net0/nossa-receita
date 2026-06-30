@@ -90,7 +90,7 @@ func TestComputeDelta(t *testing.T) {
 	}()
 	seedScenario(t, pg)
 
-	delta, err := pg.ComputeDelta(context.Background())
+	rebuild, deletes, err := pg.ComputeDelta(context.Background())
 	if err != nil {
 		t.Fatalf("expected no error computing delta, got %s", err)
 	}
@@ -103,8 +103,8 @@ func TestComputeDelta(t *testing.T) {
 		"77777777000177", // H: secondary-CNAE set changed
 	}
 	wantDelete := []string{"44444444000144"} // D: removed
-	testutils.AssertArraysHaveSameItems(t, wantRebuild, delta.Rebuild)
-	testutils.AssertArraysHaveSameItems(t, wantDelete, delta.Delete)
+	testutils.AssertArraysHaveSameItems(t, wantRebuild, rebuild)
+	testutils.AssertArraysHaveSameItems(t, wantDelete, deletes)
 }
 
 func TestApplyDelta(t *testing.T) {

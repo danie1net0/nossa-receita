@@ -93,6 +93,7 @@ func CLI() *cobra.Command {
 		createExtraIndexesCmd,
 		addDataDir(cleanupTempCmd),
 		addDataDir(transformCLI()),
+		addDataDir(updateCLI()),
 		provisionCLI(),
 		reportCmd,
 		sampleCLI(),

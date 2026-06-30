@@ -41,7 +41,7 @@ type database interface {
 	GetRelated(context.Context, string) ([]db.GraphEdge, error)
 }
 
-func loadDatabase(args *DatabaseArgs) (database, error) {
+func loadPostgres(args *DatabaseArgs) (*db.PostgreSQL, error) {
 	if args.URI == "" {
 		args.URI = os.Getenv("DATABASE_URL")
 	}
@@ -51,6 +51,17 @@ func loadDatabase(args *DatabaseArgs) (database, error) {
 	if !strings.HasPrefix(args.URI, "postgres://") && !strings.HasPrefix(args.URI, "postgresql://") {
 		return nil, fmt.Errorf("database uri does not seem to be a valid PostgreSQL URI")
 	}
-	db, err := db.NewPostgreSQL(args.URI, args.PostgresSchema, args.PostgresLogged)
-	return &db, err
+	pg, err := db.NewPostgreSQL(args.URI, args.PostgresSchema, args.PostgresLogged)
+	if err != nil {
+		return nil, err
+	}
+	return &pg, nil
+}
+
+func loadDatabase(args *DatabaseArgs) (database, error) {
+	pg, err := loadPostgres(args)
+	if err != nil {
+		return nil, err
+	}
+	return pg, nil
 }

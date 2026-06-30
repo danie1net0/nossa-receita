@@ -70,7 +70,7 @@ func TestWriteJSONs(t *testing.T) {
 	if err := db.PreLoad(); err != nil {
 		t.Fatalf("expected no error calling PreLoad, got %s", err)
 	}
-	err = writeJSONs(ctx, srcs, kv, db, 16, 8192, ext, false)
+	err = writeJSONs(ctx, srcs, kv, db, 16, 8192, ext, false, "", true)
 	if err != nil {
 		t.Fatalf("expected no error processing test data, got %s", err)
 	}
@@ -101,7 +101,7 @@ func TestLoadRelational(t *testing.T) {
 	}()
 	loadAllTestSources(t, kv)
 	db := &testDB{}
-	if err := loadRelational(ctx, kv, db); err != nil {
+	if err := loadRelational(ctx, kv, db, ""); err != nil {
 		t.Fatalf("expected no error loading relational data, got %s", err)
 	}
 	db.lock.Lock()

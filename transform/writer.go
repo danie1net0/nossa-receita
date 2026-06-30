@@ -43,7 +43,7 @@ func worker(ctx context.Context, db database, s int, ch <-chan []string) error {
 	}
 }
 
-func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db database, maxDB, batch int, ext string, privacy bool) error {
+func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db database, maxDB, batch int, ext string, privacy bool, suffix string, writeDoc bool) error {
 	bar, err := newProgressBar("[3/3] Writing JSONs", 1)
 	if err != nil {
 		return fmt.Errorf("could not create a progress bar: %w", err)
@@ -81,15 +81,20 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 	}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	ch := make(chan []string, batch*maxDB)
+	estabTable := "estabelecimento" + suffix
+	cnaeTable := "estabelecimento_cnae" + suffix
+	var ch chan []string
 	var consumers errgroup.Group
-	for range maxDB {
-		consumers.Go(func() error {
-			if err := worker(ctx, db, batch, ch); err != nil {
-				cancel(err)
-			}
-			return nil
-		})
+	if writeDoc {
+		ch = make(chan []string, batch*maxDB)
+		for range maxDB {
+			consumers.Go(func() error {
+				if err := worker(ctx, db, batch, ch); err != nil {
+					cancel(err)
+				}
+				return nil
+			})
+		}
 	}
 	pths, err := os.ReadDir(ext)
 	if err != nil {
@@ -137,13 +142,13 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 					var estabBuf, cnaeBuf [][]any
 					flushRel := func() error {
 						if len(estabBuf) > 0 {
-							if err := db.CopyRelational(ctx, "estabelecimento", estabelecimentoColumns, estabBuf); err != nil {
+							if err := db.CopyRelational(ctx, estabTable, estabelecimentoColumns, estabBuf); err != nil {
 								return err
 							}
 							estabBuf = estabBuf[:0]
 						}
 						if len(cnaeBuf) > 0 {
-							if err := db.CopyRelational(ctx, "estabelecimento_cnae", estabelecimentoCnaeColumns, cnaeBuf); err != nil {
+							if err := db.CopyRelational(ctx, cnaeTable, estabelecimentoCnaeColumns, cnaeBuf); err != nil {
 								return err
 							}
 							cnaeBuf = cnaeBuf[:0]
@@ -179,17 +184,19 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 									return err
 								}
 							}
-							if privacy {
-								c.withPrivacy()
-							}
-							j, err := c.JSON(buf)
-							if err != nil {
-								return err
-							}
-							select {
-							case <-ctx.Done():
-								return context.Cause(ctx)
-							case ch <- []string{c.CNPJ, j}:
+							if writeDoc {
+								if privacy {
+									c.withPrivacy()
+								}
+								j, err := c.JSON(buf)
+								if err != nil {
+									return err
+								}
+								select {
+								case <-ctx.Done():
+									return context.Cause(ctx)
+								case ch <- []string{c.CNPJ, j}:
+								}
 							}
 							s := b.read - prev
 							if s > 0 {
@@ -212,8 +219,11 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 		})
 	}
 	err1 := producers.Wait()
-	close(ch)
-	err2 := consumers.Wait()
+	var err2 error
+	if writeDoc {
+		close(ch)
+		err2 = consumers.Wait()
+	}
 	if err1 != nil && err2 != nil {
 		return fmt.Errorf("errors writing json: (producer error) %w, (consumer error) %w", err1, err2)
 	}
