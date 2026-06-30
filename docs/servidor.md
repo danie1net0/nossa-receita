@@ -49,8 +49,8 @@ O comando `transform` transforma os arquivos para o formato JSON, consolidando a
 Para especificar onde ficam os arquivos originais da Receita Federal e do Tesouro Nacional, o comando aceita como argumento `--directory` (ou `-d`), sendo o padrão `data/`.
 
 
-!!! danger "Importante"
-    Não existe “atualizar” o banco de dados. O processo de _upsert_ mais o gerenciamento de registros ausentes nos novos lotes faria o comando `transform` extremamente lento. Como a ideia é reproduzir o estado atual dos dados oficiais divulgados pela Receita Federal, o recomendado é subir um novo banco de dados, apontar a API web para o novo banco de dados, e depois excluir o banco de dados antigo.
+!!! tip "Atualização incremental"
+    O comando `update` aplica um novo snapshot mensal de forma incremental: carrega os dados em tabelas de _staging_, compara com os dados atuais por _hash_, aplica apenas as diferenças (inserções, alterações e remoções) e refaz apenas os documentos JSON afetados — em vez de recriar o banco inteiro. A API web detecta a mudança e atualiza o _cache_ e o _bloom filter_ sem reinício. O `transform` (recarga completa) segue sendo usado para o _bootstrap_ inicial.
 
 ### Exemplos de uso
 
@@ -60,6 +60,12 @@ Sem Docker, com a variável de ambiente `DATABASE_URL` configurada:
 $ minha-receita drop  # caso necessário
 $ minha-receita create
 $ minha-receita transform
+```
+
+Para aplicar um novo snapshot mensal incrementalmente (sem recriar o banco), coloque os novos arquivos no diretório de dados e rode:
+
+```console
+$ minha-receita update
 ```
 
 Com Docker:
