@@ -44,3 +44,7 @@ func (c *cache) get(key string) (string, bool) {
 func (c *cache) set(key, value string) {
 	c.r.Set(key, value, int64(len(value)))
 }
+
+func (c *cache) clear() {
+	c.r.Clear()
+}

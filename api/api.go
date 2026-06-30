@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"codeberg.org/cuducos/minha-receita/bloom"
@@ -25,6 +26,10 @@ import (
 const (
 	cacheMaxAge = time.Hour * 24
 	timeout     = time.Second * 90
+
+	// how often the running API checks whether the data was updated, to refresh
+	// the cache and bloom filter without a restart
+	updateCheckInterval = time.Minute * 5
 )
 
 var cacheControl = fmt.Sprintf("max-age=%d", int(cacheMaxAge.Seconds()))
@@ -40,7 +45,7 @@ type api struct {
 	db    database
 	host  string
 	cache *cache
-	check *bloom.Filter
+	check atomic.Pointer[bloom.Filter]
 }
 
 // messageResponse takes a text message and a HTTP status, wraps the message into a
@@ -83,8 +88,8 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 		}
 		cacheMisses.Inc()
 	}
-	if app.check != nil && app.check.Ready() {
-		ok, err := app.check.Exists(id)
+	if check := app.check.Load(); check != nil && check.Ready() {
+		ok, err := check.Exists(id)
 		if err != nil {
 			slog.Error("could not check bloom filter", "cnpj", id, "error", err)
 		} else if !ok {
@@ -235,17 +240,21 @@ func Serve(db database, p string, cacheSize, bloomSize int) error {
 	app := api{db: db, host: os.Getenv("ALLOWED_HOST"), cache: c}
 
 	if bloomSize > 0 {
-		app.check = bloom.New(db, bloomSize)
+		f := bloom.New(db, bloomSize)
+		app.check.Store(f)
 		go func() {
 			ini := time.Now()
-			if err := app.check.Initialize(context.Background()); err != nil {
+			if err := f.Initialize(context.Background()); err != nil {
 				slog.Error("could not Initialize bloom filter", "error", err)
 			}
-			if app.check.Ready() {
+			if f.Ready() {
 				bloomFilterBuildDuration.Set(time.Since(ini).Seconds())
 				bloomFilterReady.Set(1)
 			}
 		}()
+	}
+	if app.cache != nil || bloomSize > 0 {
+		go app.watchUpdates(context.Background(), bloomSize)
 	}
 
 	for _, r := range []struct {
@@ -268,4 +277,40 @@ func Serve(db database, p string, cacheSize, bloomSize int) error {
 	}
 	slog.Info(fmt.Sprintf("Serving at http://0.0.0.0%s", p))
 	return s.ListenAndServe()
+}
+
+// watchUpdates periodically checks the stored "updated-at" date; when it changes
+// (for example after an incremental update) it clears the cache and rebuilds the
+// bloom filter, so the running API reflects the new data — including newly added
+// CNPJs that the bloom filter would otherwise reject — without a restart.
+func (app *api) watchUpdates(ctx context.Context, bloomSize int) {
+	last, _ := app.db.MetaRead("updated-at")
+	t := time.NewTicker(updateCheckInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			cur, err := app.db.MetaRead("updated-at")
+			if err != nil || cur == "" || cur == last {
+				continue
+			}
+			slog.Info("data changed, refreshing cache and bloom filter", "from", last, "to", cur)
+			last = cur
+			if app.cache != nil {
+				app.cache.clear()
+			}
+			if bloomSize > 0 {
+				f := bloom.New(app.db, bloomSize)
+				ini := time.Now()
+				if err := f.Initialize(ctx); err != nil {
+					slog.Error("could not rebuild bloom filter", "error", err)
+					continue
+				}
+				app.check.Store(f)
+				bloomFilterBuildDuration.Set(time.Since(ini).Seconds())
+			}
+		}
+	}
 }
