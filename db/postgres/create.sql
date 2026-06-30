@@ -128,3 +128,6 @@ CREATE INDEX IF NOT EXISTS idx_socio_cnpj_base              ON socio (cnpj_base)
 CREATE INDEX IF NOT EXISTS idx_socio_cnpj_cpf_do_socio      ON socio (cnpj_cpf_do_socio);
 CREATE INDEX IF NOT EXISTS idx_estabelecimento_cnae_cnae    ON estabelecimento_cnae (cnae);
 CREATE INDEX IF NOT EXISTS idx_regime_tributario_cnpj       ON regime_tributario (cnpj);
+CREATE INDEX IF NOT EXISTS idx_estabelecimento_municipio    ON estabelecimento (codigo_municipio);
+CREATE INDEX IF NOT EXISTS idx_empresa_natureza             ON empresa (codigo_natureza_juridica);
+CREATE INDEX IF NOT EXISTS idx_municipio_ibge_codigo_ibge   ON municipio_ibge (codigo_ibge);

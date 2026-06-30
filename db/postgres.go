@@ -441,66 +441,70 @@ func (p *PostgreSQL) GetCompany(ctx context.Context, id string) (string, error) 
 	return j, nil
 }
 
+// quotedList renders validated string params (see pagination.isValid: only
+// A-Z, 0-9 and *) as a SQL list, e.g. 'SP', 'RJ'.
+func quotedList(vs []string) string {
+	q := make([]string, len(vs))
+	for i, v := range vs {
+		q[i] = "'" + v + "'"
+	}
+	return strings.Join(q, ", ")
+}
+
+func intList(vs []uint32) string {
+	s := make([]string, len(vs))
+	for i, v := range vs {
+		s[i] = fmt.Sprintf("%d", v)
+	}
+	return strings.Join(s, ", ")
+}
+
+// searchQuery filters by joining the relational tables (native B-tree indexes on
+// uf, município, CNAE and partner) and returns the matching JSONB documents.
+// Param values are interpolated, which is safe because NewQuery validates them.
 func (p *PostgreSQL) searchQuery(q *Query) *sqlbuilder.SelectBuilder {
 	b := sqlbuilder.PostgreSQL.NewSelectBuilder()
-	b.Select(p.CursorFieldName, p.JSONFieldName)
-	b.From(p.CompanyTableFullName())
-	b.OrderByAsc(p.CursorFieldName)
+	b.Select("c."+p.CursorFieldName, "c."+p.JSONFieldName)
+	b.From(p.CompanyTableFullName() + " AS c")
+	b.Join("estabelecimento AS e", "e.cnpj = c."+p.IDFieldName)
+	if len(q.NaturezaJuridica) > 0 {
+		b.JoinWithOption(sqlbuilder.LeftJoin, "empresa AS em", "em.cnpj_base = e.cnpj_base")
+	}
+	b.OrderByAsc("c." + p.CursorFieldName)
 	b.Limit(int(q.Limit))
 	if q.Cursor != nil {
-		c, err := q.CursorAsInt()
-		if err == nil {
-			b.Where(b.GreaterThan(p.CursorFieldName, c))
+		if c, err := q.CursorAsInt(); err == nil {
+			b.Where(b.GreaterThan("c."+p.CursorFieldName, c))
 		}
 	}
 	if len(q.UF) > 0 {
-		c := make([]string, len(q.UF))
-		for i, v := range q.UF {
-			c[i] = fmt.Sprintf(`json -> 'uf' = '"%s"'::jsonb`, v)
-		}
-		b.Where(b.Or(c...))
+		b.Where(fmt.Sprintf("e.uf IN (%s)", quotedList(q.UF)))
 	}
 	if len(q.Municipio) > 0 {
-		c := make([]string, len(q.Municipio)*2)
-		for i, v := range q.Municipio {
-			c[i] = fmt.Sprintf("json -> 'codigo_municipio' = '%d'::jsonb", v)
-			c[i+len(q.Municipio)] = fmt.Sprintf("json -> 'codigo_municipio_ibge' = '%d'::jsonb", v)
-		}
-		b.Where(b.Or(c...))
+		l := intList(q.Municipio)
+		b.Where(fmt.Sprintf(
+			"(e.codigo_municipio IN (%s) OR e.codigo_municipio IN (SELECT codigo_municipio FROM municipio_ibge WHERE codigo_ibge IN (%s)))",
+			l, l,
+		))
 	}
 	if len(q.NaturezaJuridica) > 0 {
-		c := make([]string, len(q.NaturezaJuridica))
-		for i, v := range q.NaturezaJuridica {
-			c[i] = fmt.Sprintf("json -> 'codigo_natureza_juridica' = '%d'::jsonb", v)
-		}
-		b.Where(b.Or(c...))
+		b.Where(fmt.Sprintf("em.codigo_natureza_juridica IN (%s)", intList(q.NaturezaJuridica)))
 	}
 	if len(q.CNAEFiscal) > 0 {
-		c := make([]string, len(q.CNAEFiscal))
-		for i, v := range q.CNAEFiscal {
-			c[i] = fmt.Sprintf("json -> 'cnae_fiscal' = '%d'::jsonb", v)
-		}
-		b.Where(b.Or(c...))
+		b.Where(fmt.Sprintf("e.cnae_fiscal IN (%s)", intList(q.CNAEFiscal)))
 	}
 	if len(q.CNAE) > 0 {
-		c := make([]string, len(q.CNAE)+1)
-		s := make([]string, len(q.CNAE))
-		for i, v := range q.CNAE {
-			s[i] = fmt.Sprintf("%d", v)
-			c[i] = fmt.Sprintf("json -> 'cnae_fiscal' = '%d'::jsonb", v)
-		}
-		c[len(q.CNAE)] = fmt.Sprintf(
-			"jsonb_path_query_array(json, '$.cnaes_secundarios[*].codigo') @> '[%s]'",
-			strings.Join(s, ","),
-		)
-		b.Where(b.Or(c...))
+		l := intList(q.CNAE)
+		b.Where(fmt.Sprintf(
+			"(e.cnae_fiscal IN (%s) OR EXISTS (SELECT 1 FROM estabelecimento_cnae ec WHERE ec.cnpj = c.%s AND ec.cnae IN (%s)))",
+			l, p.IDFieldName, l,
+		))
 	}
 	if len(q.CNPF) > 0 {
-		c := make([]string, len(q.CNPF))
-		for i, v := range q.CNPF {
-			c[i] = fmt.Sprintf(`jsonb_path_query_array(json, '$.qsa[*].cnpj_cpf_do_socio') @> '["%s"]'`, v)
-		}
-		b.Where(b.Or(c...))
+		b.Where(fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM socio s WHERE s.cnpj_base = e.cnpj_base AND s.cnpj_cpf_do_socio IN (%s))",
+			quotedList(q.CNPF),
+		))
 	}
 	return b
 }

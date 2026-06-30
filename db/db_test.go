@@ -140,6 +140,7 @@ func TestSearch(t *testing.T) {
 		}
 		pg.Close()
 	}()
+	insertRelationalForSearch(t, pg, id, c)
 	for _, tc := range []testCase{
 		{map[string][]string{"uf": {"sc"}}, 0},
 		{map[string][]string{"uf": {"sp"}}, 1},
@@ -174,5 +175,36 @@ func TestSearch(t *testing.T) {
 				assertSearchCount(t, s, tc)
 			})
 		}
+	}
+}
+
+// insertRelationalForSearch decomposes a company document into the relational
+// rows the search query joins against, so search can be exercised end-to-end.
+func insertRelationalForSearch(t *testing.T, pg *PostgreSQL, id, doc string) {
+	t.Helper()
+	var c transform.Company
+	if err := json.Unmarshal([]byte(doc), &c); err != nil {
+		t.Fatalf("expected no error parsing company, got %s", err)
+	}
+	ctx := context.Background()
+	base := id[:8]
+	exec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := pg.pool.Exec(ctx, q, args...); err != nil {
+			t.Fatalf("exec failed: %s\nquery: %s", err, q)
+		}
+	}
+	exec(`INSERT INTO estabelecimento (cnpj, cnpj_base, uf, codigo_municipio, cnae_fiscal, hash) VALUES ($1, $2, $3, $4, $5, '\x01')`,
+		id, base, c.UF, c.CodigoMunicipio, c.CNAEFiscal)
+	exec(`INSERT INTO empresa (cnpj_base, codigo_natureza_juridica, hash) VALUES ($1, $2, '\x01')`,
+		base, c.CodigoNaturezaJuridica)
+	if c.CodigoMunicipio != nil && c.CodigoMunicipioIBGE != nil {
+		exec(`INSERT INTO municipio_ibge (codigo_municipio, codigo_ibge) VALUES ($1, $2)`, *c.CodigoMunicipio, *c.CodigoMunicipioIBGE)
+	}
+	for i, cnae := range c.CNAESecundarios {
+		exec(`INSERT INTO estabelecimento_cnae (cnpj, cnae, ordem) VALUES ($1, $2, $3)`, id, cnae.Codigo, i)
+	}
+	for _, s := range c.QuadroSocietario {
+		exec(`INSERT INTO socio (cnpj_base, cnpj_cpf_do_socio) VALUES ($1, $2)`, base, s.CNPJCPFDoSocio)
 	}
 }
