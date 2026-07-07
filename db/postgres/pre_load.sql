@@ -1,4 +1,8 @@
 {{ if not .Logged }}
+SET maintenance_work_mem TO '512MB';
+
+-- Unlogged during the bulk load: no WAL, no fsync per COPY. post_load restores
+-- durability with SET LOGGED.
 ALTER TABLE {{ .CompanyTableFullName }} SET UNLOGGED;
 ALTER TABLE empresa SET UNLOGGED;
 ALTER TABLE estabelecimento SET UNLOGGED;
@@ -6,4 +10,18 @@ ALTER TABLE simples SET UNLOGGED;
 ALTER TABLE socio SET UNLOGGED;
 ALTER TABLE estabelecimento_cnae SET UNLOGGED;
 ALTER TABLE regime_tributario SET UNLOGGED;
+
+-- Drop the secondary indexes so the bulk COPY doesn't maintain a B-tree per row
+-- (the estabelecimento table alone carries four). post_load rebuilds them once,
+-- with a single sort per index, after the data is in. Primary keys are kept.
+-- Keep this list in sync with the CREATE INDEX statements in create.sql/post_load.sql.
+DROP INDEX IF EXISTS idx_estabelecimento_cnpj_base;
+DROP INDEX IF EXISTS idx_estabelecimento_cnae_fiscal;
+DROP INDEX IF EXISTS idx_estabelecimento_uf;
+DROP INDEX IF EXISTS idx_estabelecimento_municipio;
+DROP INDEX IF EXISTS idx_socio_cnpj_base;
+DROP INDEX IF EXISTS idx_socio_cnpj_cpf_do_socio;
+DROP INDEX IF EXISTS idx_estabelecimento_cnae_cnae;
+DROP INDEX IF EXISTS idx_regime_tributario_cnpj;
+DROP INDEX IF EXISTS idx_empresa_natureza;
 {{ end }}
