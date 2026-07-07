@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS {{ .MetaTableFullName }} (
     {{ .KeyFieldName }} char(16) NOT NULL PRIMARY KEY,
     {{ .ValueFieldName }} text NOT NULL
 );
-CREATE UNIQUE INDEX {{ .CompanyTableName }}_id ON {{ .CompanyTableFullName }} ({{ .IDFieldName }});
+CREATE UNIQUE INDEX IF NOT EXISTS {{ .CompanyTableName }}_id ON {{ .CompanyTableFullName }} ({{ .IDFieldName }});
 
 -- Relational source-of-truth tables (migration phase 2). These are populated
 -- by the ETL alongside the cnpj JSONB document (dual-write); the document
