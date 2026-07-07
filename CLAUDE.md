@@ -44,13 +44,13 @@ docker compose up -d postgres_test
 
 The CLI is Cobra-based; all commands are wired in `cmd/cmd.go` → `CLI()`. Each subcommand's file under `cmd/` builds flags and calls into a feature package. The key abstraction is the `database` interface in `cmd/db.go`: `loadDatabase` requires a PostgreSQL URI (`postgres://`/`postgresql://`); `DATABASE_URL` is the default source. PostgreSQL is the only backend.
 
-Subcommands: `api`, `graph`, `create`/`drop`, `extra-indexes`, `transform` (full load), `update` (incremental), `clean-up`, `provision USER@IP`, `report <log>`, `sample`.
+Subcommands: `api`, `graph`, `create`/`drop`, `extra-indexes`, `download`, `transform` (full load), `update` (incremental), `clean-up`, `provision USER@IP`, `report <log>`, `sample`.
 
 ## Architecture
 
 Three primary packages, each implementing or consuming the shared `database` interface:
 
-- **`transform/`** — the ETL, entry point `transform.Transform` (full load). Source ZIPs (`YYYY-MM.zip` + `entidades-*.zip`) must be placed **manually** in the data directory (`-d`, default `data`); the tool does not download them. The IBGE municipalities CSV is the one file fetched automatically at runtime. The shared `loadSnapshot` runs in three stages:
+- **`transform/`** — the ETL, entry point `transform.Transform` (full load). Source ZIPs (`YYYY-MM.zip` + `entidades-*.zip`) go in the data directory (`-d`, default `data`); the `download` command (`transform/download.go`) fetches them from the Receita's two public Nextcloud/WebDAV shares (tokens overridable via `RECEITA_CNPJ_SHARE_URL`/`RECEITA_REGIME_SHARE_URL`), bundling the monthly CNPJ files into `YYYY-MM.zip`. The IBGE municipalities CSV is fetched automatically at ETL runtime. The shared `loadSnapshot` runs in three stages:
   1. Unzip `YYYY-MM.zip` into a temp dir.
   2. Load all lookup/relational CSVs (`Empresas*`, `Socios*`, `Simples`, `Cnaes`, `Municipios`, tax-regime files, etc.) into an **on-disk Badger key-value store** (`transform/badger.go`), in parallel via `errgroup`.
   3. Stream `Estabelecimentos*` rows, enrich each from Badger, and **dual-write**: one JSON document per full CNPJ to the `cnpj` table **and** the normalized relational tables (`empresa`, `estabelecimento`, `socio`, `simples`, `regime_tributario`, `estabelecimento_cnae` + reference tables — see `transform/relational.go`).

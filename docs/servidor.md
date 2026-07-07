@@ -35,6 +35,12 @@ Os dados são disponibilizados mensalmente pela [Receita Federal](https://dados.
 * o arquivo `YYYY-MM.zip` da Receita Federal com os dados do CNPJ
 * os arquivos de regime tributário com prefixo `entidades-*.zip`
 
+!!! tip "Download automático"
+    O comando `download` baixa esses arquivos direto da Receita Federal (o mês mais recente, ou `--month YYYY-MM`), já no formato esperado pelo `transform`/`update`:
+    ```console
+    $ minha-receita download
+    ```
+
 A fonte oficial desses arquivos é sempre o [Portal de Dados Abertos](https://dados.gov.br) do governo federal:
 
 1. Busque por _CPNJ_ e escolha _Cadastro Nacional da Pessoa Jurídica - CNPJ_
