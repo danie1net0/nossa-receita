@@ -12,7 +12,6 @@ type incrementalDB interface {
 	database
 	MaterializeDB
 	PrepareStaging() error
-	TruncateReferences(context.Context) error
 	ComputeDelta(context.Context) (rebuild, deletes []string, err error)
 	ApplyDelta(context.Context) error
 	DeleteDocuments(context.Context, []string) error
@@ -34,9 +33,6 @@ func update(dir string, db incrementalDB, batch, maxDB int, privacy bool, ibgeMu
 	ctx := context.Background()
 	if err := db.PrepareStaging(); err != nil {
 		return fmt.Errorf("could not prepare staging tables: %w", err)
-	}
-	if err := db.TruncateReferences(ctx); err != nil {
-		return fmt.Errorf("could not reset reference tables: %w", err)
 	}
 	slog.Info("Loading the new snapshot into staging…")
 	label, err := loadSnapshot(dir, db, batch, maxDB, privacy, ibgeMunicipalitiesURL, "_staging", false)

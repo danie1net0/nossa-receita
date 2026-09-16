@@ -34,7 +34,10 @@ func setUpDelta(t *testing.T) *PostgreSQL {
 
 // seedScenario fills the live and staging tables with the CDC cases: A
 // unchanged, B changed estabelecimento hash, C new, D removed, E+F filiais of a
-// base whose empresa changed, G changed socio set, H changed secondary-CNAE set.
+// base whose empresa changed, G changed socio set, H changed secondary-CNAE set,
+// and, with their own rows unchanged: I whose município was re-described, J
+// whose socio's qualificação was re-described, K whose município got a new IBGE
+// code. A natureza jurídica added without users must not rebuild anything.
 func seedScenario(t *testing.T, pg *PostgreSQL) {
 	t.Helper()
 	ctx := context.Background()
@@ -78,6 +81,27 @@ func seedScenario(t *testing.T, pg *PostgreSQL) {
 	}
 	exec(`INSERT INTO socio_staging (cnpj_base, nome_socio) VALUES ('66666666', 'SOCIO NOVO')`)
 	exec(`INSERT INTO estabelecimento_cnae_staging (cnpj, cnae, ordem) VALUES ('77777777000177', 6202, 0)`)
+
+	// Reference-only changes: I, J and K are identical in live and staging.
+	for _, suffix := range []string{"", "_staging"} {
+		exec(fmt.Sprintf(`INSERT INTO estabelecimento%s (cnpj, cnpj_base, codigo_municipio, hash) VALUES ('88888888000188', '88888888', 2, '\x01')`, suffix)) // I
+		exec(fmt.Sprintf(`INSERT INTO estabelecimento%s (cnpj, cnpj_base, hash) VALUES ('99999999000199', '99999999', '\x01')`, suffix))                      // J
+		exec(fmt.Sprintf(`INSERT INTO estabelecimento%s (cnpj, cnpj_base, codigo_municipio, hash) VALUES ('12121212000112', '12121212', 1, '\x01')`, suffix)) // K
+		for _, b := range []string{"88888888", "99999999", "12121212"} {
+			exec(fmt.Sprintf(`INSERT INTO empresa%s (cnpj_base, codigo_natureza_juridica, hash) VALUES ($1, 2062, '\x01')`, suffix), b)
+		}
+		exec(fmt.Sprintf(`INSERT INTO socio%s (cnpj_base, nome_socio, codigo_qualificacao_socio) VALUES ('99999999', 'SOCIO', 49)`, suffix))
+		exec(fmt.Sprintf(`INSERT INTO cnae%s (codigo, descricao) VALUES (6201, 'DESENVOLVIMENTO'), (6202, 'CUSTOMIZAVEL')`, suffix))
+		exec(fmt.Sprintf(`INSERT INTO natureza_juridica%s (codigo, descricao) VALUES (2062, 'SOCIEDADE LIMITADA')`, suffix))
+		exec(fmt.Sprintf(`INSERT INTO municipio%s (codigo, descricao) VALUES (1, 'BRASILIA')`, suffix))
+	}
+	exec(`INSERT INTO municipio (codigo, descricao) VALUES (2, 'SANTA HELENA')`)
+	exec(`INSERT INTO municipio_staging (codigo, descricao) VALUES (2, 'SANTA HELENA DE GOIAS')`) // I
+	exec(`INSERT INTO qualificacao (codigo, descricao) VALUES (49, 'SOCIO')`)
+	exec(`INSERT INTO qualificacao_staging (codigo, descricao) VALUES (49, 'SOCIO-ADMINISTRADOR')`) // J
+	exec(`INSERT INTO municipio_ibge (codigo_municipio, codigo_ibge) VALUES (1, 5300107)`)
+	exec(`INSERT INTO municipio_ibge_staging (codigo_municipio, codigo_ibge) VALUES (1, 5300108)`) // K
+	exec(`INSERT INTO natureza_juridica_staging (codigo, descricao) VALUES (9999, 'NOVA SEM USO')`)
 }
 
 func TestComputeDelta(t *testing.T) {
@@ -101,6 +125,9 @@ func TestComputeDelta(t *testing.T) {
 		"55555555000255", // F: empresa base changed
 		"66666666000166", // G: socio set changed
 		"77777777000177", // H: secondary-CNAE set changed
+		"88888888000188", // I: município re-described
+		"99999999000199", // J: socio qualificação re-described
+		"12121212000112", // K: município got a new IBGE code
 	}
 	wantDelete := []string{"44444444000144"} // D: removed
 	testutils.AssertArraysHaveSameItems(t, wantRebuild, rebuild)
@@ -133,6 +160,13 @@ func TestApplyDelta(t *testing.T) {
 		{"socio", socioApplyCols},
 		{"estabelecimento_cnae", cnaeApplyCols},
 		{"regime_tributario", regimeApplyCols},
+		{"cnae", referenceApplyCols},
+		{"motivo", referenceApplyCols},
+		{"municipio", referenceApplyCols},
+		{"pais", referenceApplyCols},
+		{"natureza_juridica", referenceApplyCols},
+		{"qualificacao", referenceApplyCols},
+		{"municipio_ibge", municipioIBGEApplyCols},
 	} {
 		c := strings.Join(tc.cols, ", ")
 		q := fmt.Sprintf(

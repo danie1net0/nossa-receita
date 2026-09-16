@@ -242,20 +242,21 @@ func (b *relBatch) flush(ctx context.Context, db database) error {
 // estabelecimento rows come separately, from the stage-3 stream. It is safe to
 // run concurrently with writeJSONs: it writes a disjoint set of tables.
 func loadRelational(ctx context.Context, kv *kv, db database, suffix string) error {
-	// The suffix targets the entity tables (e.g. "_staging" for incremental
-	// updates); reference tables are always written to the live tables.
+	// The suffix targets every table (e.g. "_staging" for incremental updates),
+	// reference tables included: the update diffs them against the live ones to
+	// find the documents whose descriptions changed.
 	empresa := &relBatch{table: "empresa" + suffix, columns: empresaColumns}
 	simples := &relBatch{table: "simples" + suffix, columns: simplesColumns}
 	socio := &relBatch{table: "socio" + suffix, columns: socioColumns}
 	regime := &relBatch{table: "regime_tributario" + suffix, columns: regimeTributarioColumns}
-	ibge := &relBatch{table: "municipio_ibge", columns: municipioIBGEColumns}
+	ibge := &relBatch{table: "municipio_ibge" + suffix, columns: municipioIBGEColumns}
 	refs := map[string]*relBatch{
-		"cna": {table: "cnae", columns: referenceColumns},
-		"mot": {table: "motivo", columns: referenceColumns},
-		"mun": {table: "municipio", columns: referenceColumns},
-		"pai": {table: "pais", columns: referenceColumns},
-		"nat": {table: "natureza_juridica", columns: referenceColumns},
-		"qua": {table: "qualificacao", columns: referenceColumns},
+		"cna": {table: "cnae" + suffix, columns: referenceColumns},
+		"mot": {table: "motivo" + suffix, columns: referenceColumns},
+		"mun": {table: "municipio" + suffix, columns: referenceColumns},
+		"pai": {table: "pais" + suffix, columns: referenceColumns},
+		"nat": {table: "natureza_juridica" + suffix, columns: referenceColumns},
+		"qua": {table: "qualificacao" + suffix, columns: referenceColumns},
 	}
 
 	err := kv.db.View(func(txn *badger.Txn) error {

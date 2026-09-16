@@ -84,4 +84,16 @@ CREATE UNLOGGED TABLE IF NOT EXISTS regime_tributario_staging (
     quantidade_de_escrituracoes int
 );
 
-TRUNCATE empresa_staging, estabelecimento_staging, simples_staging, socio_staging, estabelecimento_cnae_staging, regime_tributario_staging;
+-- Reference tables are staged too, so a changed, added or removed description
+-- (e.g. a renamed CNAE or a new municipality) can be traced to the documents
+-- that show it.
+CREATE UNLOGGED TABLE IF NOT EXISTS motivo_staging            (codigo int NOT NULL, descricao text);
+CREATE UNLOGGED TABLE IF NOT EXISTS pais_staging              (codigo int NOT NULL, descricao text);
+CREATE UNLOGGED TABLE IF NOT EXISTS cnae_staging              (codigo int NOT NULL, descricao text);
+CREATE UNLOGGED TABLE IF NOT EXISTS municipio_staging         (codigo int NOT NULL, descricao text);
+CREATE UNLOGGED TABLE IF NOT EXISTS natureza_juridica_staging (codigo int NOT NULL, descricao text);
+CREATE UNLOGGED TABLE IF NOT EXISTS qualificacao_staging      (codigo int NOT NULL, descricao text);
+CREATE UNLOGGED TABLE IF NOT EXISTS municipio_ibge_staging    (codigo_municipio int NOT NULL, codigo_ibge int);
+
+TRUNCATE empresa_staging, estabelecimento_staging, simples_staging, socio_staging, estabelecimento_cnae_staging, regime_tributario_staging,
+    motivo_staging, pais_staging, cnae_staging, municipio_staging, natureza_juridica_staging, qualificacao_staging, municipio_ibge_staging;
