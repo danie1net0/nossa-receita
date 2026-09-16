@@ -38,16 +38,6 @@ func ValidateIndexes(idxs []string) error {
 	return nil
 }
 
-var extraIndexes = [...]string{
-	"cnae_fiscal",
-	"cnaes_secundarios.codigo",
-	"codigo_municipio",
-	"codigo_municipio_ibge",
-	"codigo_natureza_juridica",
-	"qsa.cnpj_cpf_do_socio",
-	"uf",
-}
-
 // In Oct. 2025 the Federal Revenue started using the country code 367. which is
 // not present in Paises.zip. The issue was officially reported to them via
 // Fala.BR. They replied but did not seem to care about updating the dataset.
@@ -84,7 +74,6 @@ type database interface {
 	CreateCompanies(context.Context, [][]string) error
 	CopyRelational(context.Context, string, []string, [][]any) error
 	PostLoad() error
-	CreateExtraIndexes([]string) error
 	MetaSave(string, string) error
 }
 
@@ -138,11 +127,6 @@ func postLoad(db database) error {
 		return err
 	}
 	slog.Info("Database consolidated!")
-	slog.Info("Creating indexes…")
-	if err := db.CreateExtraIndexes(extraIndexes[:]); err != nil {
-		return err
-	}
-	slog.Info("Indexes created!")
 	return nil
 }
 

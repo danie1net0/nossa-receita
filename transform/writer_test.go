@@ -32,10 +32,6 @@ func (db *testDB) PostLoad() error {
 	return nil
 }
 
-func (db *testDB) CreateExtraIndexes(indexes []string) error {
-	return nil
-}
-
 func (db *testDB) MetaSave(key, value string) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()

@@ -26,7 +26,7 @@ Você pode ainda criar índices para essas buscas ficarem mais rápidas com o co
 $ minha-receita extra-indexes uf cnaes_secundarios.codigo
 ```
 
-Os índices para `uf`, `cnae_fiscal` e `codigo` dos `cnaes_secundarios` já são criados por padrão.
+Esses índices no JSON não são criados por padrão: a busca da API filtra pelas tabelas relacionais (`estabelecimento`, `empresa`, `socio`, `estabelecimento_cnae`), que já têm seus próprios índices. Crie-os apenas se for fazer consultas SQL diretamente no JSON. Na base completa, cada um leva dezenas de minutos para ser criado.
 
 Para referência, no PostgreSQL:
 
