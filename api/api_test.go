@@ -34,8 +34,8 @@ func (mockDatabase) Search(ctx context.Context, q *db.Query) (string, error) { r
 
 func (mockDatabase) MetaRead(k string) (string, error) { return "42", nil }
 
-func (mockDatabase) AllCompanies(ctx context.Context, cursor *string, limit uint32) ([]string, *string, error) {
-	return nil, nil, nil
+func (mockDatabase) AllCompanies(ctx context.Context, fn func(string)) error {
+	return nil
 }
 
 func TestCompanyHandler(t *testing.T) {

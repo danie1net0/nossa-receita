@@ -10,26 +10,11 @@ type mockDB struct {
 	ids []string
 }
 
-func (m *mockDB) AllCompanies(ctx context.Context, c *string, l uint32) ([]string, *string, error) {
-	s := 0
-	if c != nil {
-		for i, id := range m.ids {
-			if id == *c {
-				s = i + 1
-				break
-			}
-		}
+func (m *mockDB) AllCompanies(ctx context.Context, fn func(string)) error {
+	for _, id := range m.ids {
+		fn(id)
 	}
-
-	e := min(s+int(l), len(m.ids))
-
-	r := m.ids[s:e]
-	var n *string
-	if e < len(m.ids) {
-		n = &m.ids[e-1]
-	}
-
-	return r, n, nil
+	return nil
 }
 
 func TestBloomFilter(t *testing.T) {

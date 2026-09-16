@@ -17,16 +17,15 @@ import (
 const (
 	numHashFuncs = 7
 
-	// how many CNPJs to request to the database per page durint the
-	// initialization
-	pageSize = 1 << 18
+	// how often (in CNPJs) to log progress during the initialization
+	progressEvery = 1 << 22
 
 	// golden ratio for double hashing without allocations
 	goldenRatio = 0x9e3779b97f4a7c15
 )
 
 type database interface {
-	AllCompanies(ctx context.Context, cursor *string, limit uint32) ([]string, *string, error)
+	AllCompanies(ctx context.Context, fn func(string)) error
 }
 
 type Filter struct {
@@ -79,36 +78,17 @@ func (f *Filter) Initialize(ctx context.Context) error {
 	ini := time.Now()
 
 	pos := make([]uint, numHashFuncs)
-	var ids []string
-	var c *string
-	var err error
 	var t uint64
-	for {
-		b := time.Now()
-		ids, c, err = f.db.AllCompanies(ctx, c, pageSize)
-		if err != nil {
-			slog.Error("Failed to build CNPJ presence filter", "error", err)
-			return fmt.Errorf("could not build bloom filter: %w", err)
+	err := f.db.AllCompanies(ctx, func(id string) {
+		f.add(id, pos)
+		t++
+		if t%progressEvery == 0 {
+			slog.Debug("Building CNPJ presence filter", "count", t, "total_duration", time.Since(ini))
 		}
-		if len(ids) == 0 {
-			if c == nil {
-				break
-			}
-			continue
-		}
-		for _, id := range ids {
-			f.add(id, pos)
-			t++
-		}
-		slog.Debug(
-			"Building CNPJ presence filter",
-			"count", t,
-			"batch_duration_ms", time.Since(b),
-			"total_duration", time.Since(ini),
-		)
-		if c == nil {
-			break
-		}
+	})
+	if err != nil {
+		slog.Error("Failed to build CNPJ presence filter", "error", err)
+		return fmt.Errorf("could not build bloom filter: %w", err)
 	}
 
 	f.ok.Store(true)

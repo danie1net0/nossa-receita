@@ -122,35 +122,11 @@ func TestPostgresAllCompanies(t *testing.T) {
 		return
 	}
 
-	ids, cur, err := pg.AllCompanies(context.Background(), nil, 2)
-	if err != nil {
-		t.Errorf("expected no error getting first page, got %s", err)
+	var ids []string
+	if err := pg.AllCompanies(context.Background(), func(id string) { ids = append(ids, id) }); err != nil {
+		t.Errorf("expected no error listing companies, got %s", err)
 	}
-	if len(ids) != 2 {
-		t.Errorf("expected 2 IDs, got %d", len(ids))
-	}
-	if cur == nil {
-		t.Error("expected cursor for next page")
-	}
-
-	if cur != nil {
-		ids2, cur2, err := pg.AllCompanies(context.Background(), cur, 2)
-		if err != nil {
-			t.Errorf("expected no error getting second page, got %s", err)
-		}
-		if len(ids2) != 1 {
-			t.Errorf("expected 1 ID on second page, got %d", len(ids2))
-		}
-		if cur2 != nil {
-			t.Error("expected nil cursor at the end")
-		}
-	}
-
-	not := "not-a-number"
-	_, _, err = pg.AllCompanies(context.Background(), &not, 2)
-	if err == nil {
-		t.Error("expected error for invalid cursor")
-	}
+	testutils.AssertArraysHaveSameItems(t, []string{id, id2, id3}, ids)
 }
 
 func TestSplitStatements(t *testing.T) {

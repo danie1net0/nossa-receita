@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -658,44 +657,29 @@ func (p *PostgreSQL) CreateExtraIndexes(idxs []string) error {
 	return nil
 }
 
-// AllCompanies returns a paginated list of CNPJ numbers from the database.
-func (p *PostgreSQL) AllCompanies(ctx context.Context, cursor *string, limit uint32) ([]string, *string, error) {
-	b := sqlbuilder.PostgreSQL.NewSelectBuilder().
-		Select(p.CursorFieldName, p.IDFieldName).
-		From(p.CompanyTableFullName()).
-		OrderByAsc(p.CursorFieldName).
-		Limit(int(limit))
-
-	if cursor != nil {
-		c, err := strconv.Atoi(*cursor)
-		if err != nil {
-			return nil, nil, fmt.Errorf("invalid cursor: %w", err)
+// AllCompanies streams every CNPJ number in the database to fn in a single
+// query. Selecting only the id lets PostgreSQL answer from the unique id index
+// (an index-only scan once the table is vacuumed) instead of visiting the JSONB
+// heap row by row, as paginating by cursor did: on the full dataset that is
+// seconds instead of many minutes.
+func (p *PostgreSQL) AllCompanies(ctx context.Context, fn func(string)) error {
+	q := fmt.Sprintf("SELECT %s FROM %s", p.IDFieldName, p.CompanyTableFullName())
+	rows, err := p.pool.Query(ctx, q)
+	if err != nil {
+		return fmt.Errorf("error listing CNPJs: %w", err)
+	}
+	defer rows.Close()
+	var id string
+	for rows.Next() {
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("error reading CNPJ: %w", err)
 		}
-		b.Where(b.GreaterThan(p.CursorFieldName, c))
+		fn(id)
 	}
-
-	sql, args := b.Build()
-	q, err := p.pool.Query(ctx, sql, args...)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error listing CNPJs: %w", err)
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error listing CNPJs: %w", err)
 	}
-
-	rows, err := pgx.CollectRows(q, pgx.RowToStructByPos[postgresRecord])
-	if err != nil {
-		return nil, nil, fmt.Errorf("error reading CNPJs: %w", err)
-	}
-
-	ids := make([]string, len(rows))
-	for i, r := range rows {
-		ids[i] = r.Company
-	}
-
-	if len(rows) < int(limit) {
-		return ids, nil, nil
-	}
-
-	cur := fmt.Sprintf("%d", rows[len(rows)-1].Cursor)
-	return ids, &cur, nil
+	return nil
 }
 
 // NewPostgreSQL creates a new PostgreSQL connection and ping it to make sure it works.
