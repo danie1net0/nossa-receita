@@ -153,6 +153,26 @@ func TestPostgresAllCompanies(t *testing.T) {
 	}
 }
 
+func TestSplitStatements(t *testing.T) {
+	s := `
+SET maintenance_work_mem TO '512MB';
+
+-- a comment; with a semicolon
+ALTER TABLE cnpj SET LOGGED;
+CREATE INDEX IF NOT EXISTS idx_a
+    ON a (b);
+`
+	got := splitStatements(s)
+	exp := []string{
+		"SET maintenance_work_mem TO '512MB'",
+		"ALTER TABLE cnpj SET LOGGED",
+		"CREATE INDEX IF NOT EXISTS idx_a\n    ON a (b)",
+	}
+	if !slices.Equal(got, exp) {
+		t.Errorf("expected %q, got %q", exp, got)
+	}
+}
+
 func TestPostgresGetNeighbors(t *testing.T) {
 	id := "33683111000280"
 	b, err := os.ReadFile(filepath.Join("..", "testdata", "response.json"))

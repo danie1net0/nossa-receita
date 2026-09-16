@@ -539,28 +539,69 @@ func (p *PostgreSQL) Search(ctx context.Context, q *Query) (string, error) {
 
 }
 
-// PreLoad runs before starting to load data into the database. Currently it
-// disables autovacuum on PostgreSQL.
+// splitStatements breaks a rendered SQL script into its statements, dropping
+// full-line comments. The scripts it is used on have no semicolons inside
+// literals or bodies.
+func splitStatements(s string) []string {
+	var b strings.Builder
+	for l := range strings.Lines(s) {
+		if strings.HasPrefix(strings.TrimSpace(l), "--") {
+			continue
+		}
+		b.WriteString(l)
+	}
+	var stmts []string
+	for part := range strings.SplitSeq(b.String(), ";") {
+		if t := strings.TrimSpace(part); t != "" {
+			stmts = append(stmts, t)
+		}
+	}
+	return stmts
+}
+
+// execStatements runs each statement of a script on its own (autocommit), on a
+// single connection so session settings such as maintenance_work_mem carry
+// over. Sending the whole script in one Exec makes it a single implicit
+// transaction: every table rewrite (SET LOGGED/UNLOGGED) then keeps its old copy
+// on disk until the very end, adding up to roughly twice the database size, and
+// a failure in the last statement rolls back hours of work.
+func (p *PostgreSQL) execStatements(ctx context.Context, s string) error {
+	c, err := p.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("could not acquire a database connection: %w", err)
+	}
+	defer c.Release()
+	for _, stmt := range splitStatements(s) {
+		slog.Debug("running statement", "sql", stmt)
+		if _, err := c.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("%s: %w", stmt, err)
+		}
+	}
+	return nil
+}
+
+// PreLoad runs before starting to load data into the database: it makes the
+// tables unlogged and drops the secondary indexes.
 func (p *PostgreSQL) PreLoad() error {
 	s, err := p.renderTemplate("pre_load")
 	if err != nil {
 		return fmt.Errorf("error rendering pre-load template: %w", err)
 	}
-	if _, err := p.pool.Exec(context.Background(), s); err != nil {
-		return fmt.Errorf("error during pre load: %s\n%w", s, err)
+	if err := p.execStatements(context.Background(), s); err != nil {
+		return fmt.Errorf("error during pre load: %w", err)
 	}
 	return nil
 }
 
-// PostLoad runs after loading data into the database. Currently it re-enables
-// autovacuum on PostgreSQL.
+// PostLoad runs after loading data into the database: it makes the tables
+// logged again and rebuilds the secondary indexes.
 func (p *PostgreSQL) PostLoad() error {
 	s, err := p.renderTemplate("post_load")
 	if err != nil {
 		return fmt.Errorf("error rendering post-load template: %w", err)
 	}
-	if _, err := p.pool.Exec(context.Background(), s); err != nil {
-		return fmt.Errorf("error during post load: %s\n%w", s, err)
+	if err := p.execStatements(context.Background(), s); err != nil {
+		return fmt.Errorf("error during post load: %w", err)
 	}
 	return nil
 }
