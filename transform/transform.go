@@ -17,8 +17,10 @@ import (
 
 const (
 	// PostgresBatchSize determines the size of the batches used to create the initial JSON in Postgres
-	// data in the database.
-	PostgresBatchSize = 65536
+	// data in the database. Each of the MaxParallelDBQueries workers holds up to
+	// one batch of JSON documents in memory: with 65536 a full load swapped
+	// heavily on a 16GB machine, while 8192 keeps it at a few GB.
+	PostgresBatchSize = 8192
 
 	// MaxParallelDBQueries is the default for maximum number of parallels save
 	// queries sent to the database

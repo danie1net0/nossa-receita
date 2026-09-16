@@ -86,7 +86,10 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 	var ch chan []string
 	var consumers errgroup.Group
 	if writeDoc {
-		ch = make(chan []string, batch*maxDB)
+		// One batch of slack is enough to keep the producers from blocking on
+		// every row; the workers already buffer a batch each. A buffer of
+		// batch*maxDB held millions of JSON documents in memory on a full load.
+		ch = make(chan []string, batch)
 		for range maxDB {
 			consumers.Go(func() error {
 				if err := worker(ctx, db, batch, ch); err != nil {
