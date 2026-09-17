@@ -115,6 +115,21 @@ func TestApplyDelta(t *testing.T) {
 	if err := pg.ApplyDelta(ctx); err != nil {
 		t.Fatalf("expected no error applying delta, got %s", err)
 	}
+	defer func() {
+		if err := pg.TruncateStaging(ctx); err != nil {
+			t.Errorf("expected no error truncating staging, got %s", err)
+			return
+		}
+		for _, tbl := range stagingTables {
+			var n int
+			if err := pg.pool.QueryRow(ctx, "SELECT count(*) FROM "+tbl).Scan(&n); err != nil {
+				t.Errorf("expected no error counting %s, got %s", tbl, err)
+			}
+			if n != 0 {
+				t.Errorf("expected %s to be empty after TruncateStaging, got %d rows", tbl, n)
+			}
+		}
+	}()
 
 	// After apply each live table must equal its staging counterpart.
 	for _, tc := range []struct {

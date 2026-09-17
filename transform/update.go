@@ -12,6 +12,7 @@ type incrementalDB interface {
 	database
 	PrepareStaging() error
 	ApplyDelta(context.Context) error
+	TruncateStaging(context.Context) error
 }
 
 // Update applies a new monthly snapshot incrementally: it loads the snapshot
@@ -38,6 +39,9 @@ func update(dir string, db incrementalDB, batch int, ibgeMunicipalitiesURL strin
 	slog.Info("Applying the changes…")
 	if err := db.ApplyDelta(ctx); err != nil {
 		return fmt.Errorf("could not apply the delta: %w", err)
+	}
+	if err := db.TruncateStaging(ctx); err != nil {
+		return err
 	}
 	return saveUpdatedAt(db, label)
 }

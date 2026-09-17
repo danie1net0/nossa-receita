@@ -61,7 +61,7 @@ Supporting packages: `report/` (FOI report from ETL logs), `sample/` (shrunken s
 
 ## Relational model & incremental updates
 
-The relational tables are the data; there is no derived document. **Incremental update** (`transform/update.go` + `db/delta.go`): `update` loads the new snapshot into UNLOGGED `*_staging` tables (reference tables included) and `ApplyDelta` makes the live tables equal to staging touching only the differences — hash anti-join upsert/prune for 1:1 entities, per-parent set replacement for child collections (`socio`, `estabelecimento_cnae`, `regime_tributario`), value upsert/prune for reference tables. **Invariant** (the acceptance test): applying month N+1 incrementally yields a database identical to a full load of N+1.
+The relational tables are the data; there is no derived document. **Incremental update** (`transform/update.go` + `db/delta.go`): `update` loads the new snapshot into UNLOGGED `*_staging` tables (reference tables included), `ApplyDelta` makes the live tables equal to staging touching only the differences, and `TruncateStaging` frees their disk space at the end — hash anti-join upsert/prune for 1:1 entities, per-parent set replacement for child collections (`socio`, `estabelecimento_cnae`, `regime_tributario`), value upsert/prune for reference tables. **Invariant** (the acceptance test): applying month N+1 incrementally yields a database identical to a full load of N+1.
 
 ## Personal data
 

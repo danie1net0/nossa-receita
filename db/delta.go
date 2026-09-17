@@ -6,6 +6,23 @@ import (
 	"strings"
 )
 
+// stagingTables are the UNLOGGED copies of the live tables loaded by an update.
+var stagingTables = []string{
+	"empresa_staging", "estabelecimento_staging", "simples_staging", "socio_staging",
+	"estabelecimento_cnae_staging", "regime_tributario_staging", "motivo_staging",
+	"pais_staging", "cnae_staging", "municipio_staging", "natureza_juridica_staging",
+	"qualificacao_staging", "municipio_ibge_staging",
+}
+
+// TruncateStaging empties the staging tables, freeing their disk space once the
+// update has applied them.
+func (p *PostgreSQL) TruncateStaging(ctx context.Context) error {
+	if _, err := p.pool.Exec(ctx, "TRUNCATE "+strings.Join(stagingTables, ", ")); err != nil {
+		return fmt.Errorf("could not truncate the staging tables: %w", err)
+	}
+	return nil
+}
+
 // PrepareStaging creates (if needed) and truncates the UNLOGGED staging tables.
 func (p *PostgreSQL) PrepareStaging() error {
 	s, err := p.renderTemplate("staging")
