@@ -23,6 +23,7 @@ type database interface {
 	// transform
 	PreLoad() error
 	CopyRelational(context.Context, string, []string, [][]any) error
+	CNPJsByBase(context.Context, string, []string) (map[string][]string, error)
 	PostLoad() error
 	MetaSave(string, string) error
 }

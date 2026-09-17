@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -74,7 +75,7 @@ func hashRow(cols []string) []byte {
 
 // The *Value helpers parse a raw CSV string into a value pgx can encode, or nil
 // for a SQL NULL. The *Ptr helpers do the same for the typed pointers already
-// parsed into a Company.
+// parsed into an estabelecimento.
 
 func intValue(s string) any {
 	i, err := toInt(s)
@@ -129,10 +130,9 @@ func strPtr(p *string) any {
 	return *p
 }
 
-// estabelecimentoRow builds the estabelecimento row from a Company. It must be
-// called BEFORE withPrivacy so the relational store keeps raw data; the raw CSV
-// row is hashed for change detection.
-func estabelecimentoRow(c *Company, raw []string) []any {
+// estabelecimentoRow builds the estabelecimento row from a parsed row; the raw
+// CSV row is hashed for change detection.
+func estabelecimentoRow(c *estabelecimento, raw []string) []any {
 	return []any{
 		c.CNPJ,
 		c.CNPJ[:8],
@@ -163,20 +163,20 @@ func estabelecimentoRow(c *Company, raw []string) []any {
 	}
 }
 
-// estabelecimentoCnaeRows builds the secondary-CNAE rows for a Company,
+// estabelecimentoCnaeRows builds the secondary-CNAE rows of an establishment,
 // de-duplicated to avoid (cnpj, cnae) primary-key collisions.
-func estabelecimentoCnaeRows(c *Company) [][]any {
+func estabelecimentoCnaeRows(c *estabelecimento) [][]any {
 	if len(c.CNAESecundarios) == 0 {
 		return nil
 	}
 	seen := make(map[int]struct{}, len(c.CNAESecundarios))
 	rows := make([][]any, 0, len(c.CNAESecundarios))
 	for _, cnae := range c.CNAESecundarios {
-		if _, ok := seen[cnae.Codigo]; ok {
+		if _, ok := seen[cnae]; ok {
 			continue
 		}
-		seen[cnae.Codigo] = struct{}{}
-		rows = append(rows, []any{c.CNPJ, cnae.Codigo, len(rows)}) // ordem preserves source order
+		seen[cnae] = struct{}{}
+		rows = append(rows, []any{c.CNPJ, cnae, len(rows)}) // ordem preserves source order
 	}
 	return rows
 }
@@ -238,13 +238,13 @@ func (b *relBatch) flush(ctx context.Context, db database) error {
 }
 
 // loadRelational scans the key-value store populated in stage 2 and writes the
-// base-keyed, reference and tax-regime relational tables (dual-write). The
-// estabelecimento rows come separately, from the stage-3 stream. It is safe to
-// run concurrently with writeJSONs: it writes a disjoint set of tables.
-func loadRelational(ctx context.Context, kv *kv, db database, suffix string) error {
+// base-keyed, reference and tax-regime relational tables. The estabelecimento
+// rows come separately, from the stage-3 stream, so both can run concurrently.
+// It returns, by CNPJ base, the country codes of partners that are missing from
+// the reference file, to be logged per establishment once those are loaded.
+func loadRelational(ctx context.Context, kv *kv, db database, srcs map[string]*source, suffix string) (map[string][]string, error) {
 	// The suffix targets every table (e.g. "_staging" for incremental updates),
-	// reference tables included: the update diffs them against the live ones to
-	// find the documents whose descriptions changed.
+	// reference tables included.
 	empresa := &relBatch{table: "empresa" + suffix, columns: empresaColumns}
 	simples := &relBatch{table: "simples" + suffix, columns: simplesColumns}
 	socio := &relBatch{table: "socio" + suffix, columns: socioColumns}
@@ -259,6 +259,7 @@ func loadRelational(ctx context.Context, kv *kv, db database, suffix string) err
 		"qua": {table: "qualificacao" + suffix, columns: referenceColumns},
 	}
 
+	unknownPais := make(map[string][]string)
 	err := kv.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
@@ -282,6 +283,9 @@ func loadRelational(ctx context.Context, kv *kv, db database, suffix string) err
 			}); err != nil {
 				return err
 			}
+			if srcKey == "soc" && len(val) >= 10 && !known(srcs["pai"], val[5], 0) {
+				unknownPais[id] = append(unknownPais[id], val[5])
+			}
 			if err := routeRelational(ctx, db, id, srcKey, val, empresa, simples, socio, regime, ibge, refs); err != nil {
 				return err
 			}
@@ -289,7 +293,7 @@ func loadRelational(ctx context.Context, kv *kv, db database, suffix string) err
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("could not scan key-value storage for relational load: %w", err)
+		return nil, fmt.Errorf("could not scan key-value storage for relational load: %w", err)
 	}
 
 	batches := []*relBatch{empresa, simples, socio, regime, ibge}
@@ -298,7 +302,33 @@ func loadRelational(ctx context.Context, kv *kv, db database, suffix string) err
 	}
 	for _, b := range batches {
 		if err := b.flush(ctx, db); err != nil {
-			return err
+			return nil, err
+		}
+	}
+	return unknownPais, nil
+}
+
+// logUnknownPartnerCountries logs one "unknown Pais" warning per establishment
+// and partner whose country code is missing from the reference file, as the
+// report command expects.
+func logUnknownPartnerCountries(ctx context.Context, log *slog.Logger, db database, table string, unknownPais map[string][]string) error {
+	if len(unknownPais) == 0 {
+		return nil
+	}
+	bases := make([]string, 0, len(unknownPais))
+	for b := range unknownPais {
+		bases = append(bases, b)
+	}
+	cnpjs, err := db.CNPJsByBase(ctx, table, bases)
+	if err != nil {
+		return fmt.Errorf("could not find the establishments of partners with unknown countries: %w", err)
+	}
+	for base, codes := range unknownPais {
+		for _, cnpj := range cnpjs[base] {
+			l := log.With("cnpj", cnpj)
+			for _, code := range codes {
+				l.Warn("unknown Pais", "code", code)
+			}
 		}
 	}
 	return nil

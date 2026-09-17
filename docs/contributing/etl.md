@@ -108,7 +108,7 @@ flowchart
     ETL2 -->|Escreve| Bad
 
     Ext -->|Lê Estabelecimentos| ETL3
-    Bad -->|Enriquece| ETL3
+    Bad -->|Lê| ETL3
     ETL3 -->|Escreve| DB
 ```
 

@@ -11,17 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/encoding/charmap"
 )
 
-// loadEstabelecimentos streams the Estabelecimentos CSVs, parses each row (with
-// the key-value store, which also logs codes missing from the reference files
-// for the report command) and writes the estabelecimento and secondary-CNAE
-// relational tables.
-func loadEstabelecimentos(ctx context.Context, srcs map[string]*source, kv *kv, db database, batch int, ext string, suffix string) error {
+// loadEstabelecimentos streams the Estabelecimentos CSVs, parses each row and
+// writes the estabelecimento and secondary-CNAE relational tables.
+func loadEstabelecimentos(ctx context.Context, log *slog.Logger, srcs map[string]*source, db database, batch int, ext string, suffix string) error {
 	bar, err := newProgressBar("[3/3] Loading establishments", 1)
 	if err != nil {
 		return fmt.Errorf("could not create a progress bar: %w", err)
@@ -29,28 +26,6 @@ func loadEstabelecimentos(ctx context.Context, srcs map[string]*source, kv *kv, 
 	defer func() {
 		bar.AddMax(-1) // compensate for the extra byte added when creating the bar
 	}()
-	n := fmt.Sprintf("minha-receita-etl-%s.log", time.Now().Format("20060102150405"))
-	f, err := os.Create(n)
-	if err != nil {
-		return fmt.Errorf("could not create log file %s: %w", n, err)
-	}
-	defer func() {
-		if err := f.Close(); err != nil {
-			slog.Warn("could not close the log file", "name", n, "error", err)
-		}
-		i, err := os.Stat(n)
-		if err != nil {
-			slog.Warn("could not check log file size", "name", n, "error", err)
-			return
-		}
-		if i.Size() != 0 {
-			return
-		}
-		if err := os.Remove(n); err != nil {
-			slog.Warn("could not delete empty log file", "name", n, "error", err)
-		}
-	}()
-	log := slog.New(slog.NewJSONHandler(f, nil))
 	src := newCompanySrc("Estabelecimentos", ';', false, false)
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
@@ -133,12 +108,12 @@ func loadEstabelecimentos(ctx context.Context, srcs map[string]*source, kv *kv, 
 							for n := range row {
 								row[n] = cleanupColumn(row[n])
 							}
-							c, err := newCompany(log, srcs, kv, row)
+							e, err := parseEstabelecimento(log, srcs, row)
 							if err != nil {
-								return fmt.Errorf("could not create company %v: %w", row[:3], err)
+								return fmt.Errorf("could not parse establishment %v: %w", row[:3], err)
 							}
-							estabBuf = append(estabBuf, estabelecimentoRow(c, row))
-							cnaeBuf = append(cnaeBuf, estabelecimentoCnaeRows(c)...)
+							estabBuf = append(estabBuf, estabelecimentoRow(e, row))
+							cnaeBuf = append(cnaeBuf, estabelecimentoCnaeRows(e)...)
 							if len(estabBuf) >= batch {
 								if err := flushRel(); err != nil {
 									return err

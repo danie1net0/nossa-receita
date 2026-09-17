@@ -2,6 +2,7 @@ package transform
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"testing"
 )
@@ -10,6 +11,7 @@ type testDB struct {
 	lock       sync.Mutex
 	data       map[string]string
 	relational map[string]int
+	byBase     map[string][]string
 }
 
 func (db *testDB) PreLoad() error {
@@ -28,6 +30,16 @@ func (db *testDB) MetaSave(key, value string) error {
 	defer db.lock.Unlock()
 	db.data[key] = value
 	return nil
+}
+
+func (db *testDB) CNPJsByBase(_ context.Context, _ string, bases []string) (map[string][]string, error) {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	out := make(map[string][]string)
+	for _, b := range bases {
+		out[b] = db.byBase[b]
+	}
+	return out, nil
 }
 
 func (db *testDB) CopyRelational(_ context.Context, table string, _ []string, rows [][]any) error {
@@ -52,12 +64,12 @@ func TestLoadEstabelecimentos(t *testing.T) {
 			t.Errorf("expected no error closing badger, got %s", err)
 		}
 	}()
-	ext := loadAllTestSources(t, kv)
+	ext := loadAllTestSources(t, kv, srcs)
 	db := &testDB{}
 	if err := db.PreLoad(); err != nil {
 		t.Fatalf("expected no error calling PreLoad, got %s", err)
 	}
-	if err := loadEstabelecimentos(ctx, srcs, kv, db, 8192, ext, ""); err != nil {
+	if err := loadEstabelecimentos(ctx, slog.New(slog.DiscardHandler), srcs, db, 8192, ext, ""); err != nil {
 		t.Fatalf("expected no error processing test data, got %s", err)
 	}
 	db.lock.Lock()
@@ -81,9 +93,10 @@ func TestLoadRelational(t *testing.T) {
 			t.Errorf("expected no error closing badger, got %s", err)
 		}
 	}()
-	loadAllTestSources(t, kv)
+	srcs := sources()
+	loadAllTestSources(t, kv, srcs)
 	db := &testDB{}
-	if err := loadRelational(ctx, kv, db, ""); err != nil {
+	if _, err := loadRelational(ctx, kv, db, srcs, ""); err != nil {
 		t.Fatalf("expected no error loading relational data, got %s", err)
 	}
 	db.lock.Lock()

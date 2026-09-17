@@ -52,6 +52,7 @@ var extraCounties = map[int]string{
 type database interface {
 	PreLoad() error
 	CopyRelational(context.Context, string, []string, [][]any) error
+	CNPJsByBase(context.Context, string, []string) (map[string][]string, error)
 	PostLoad() error
 	MetaSave(string, string) error
 }
@@ -77,12 +78,21 @@ func sources() map[string]*source { // all but Estabelecimentos (this one is loa
 	for _, src := range srcs {
 		m[src.key] = src
 	}
+	for _, k := range []string{"mot", "pai", "mun", "tab"} {
+		m[k].values = make(map[string][]string)
+	}
 	return m
 }
+
+// progressBarThrottle limits how often the bars are redrawn. The ETL adds to
+// them for every chunk or row it processes, and redrawing each time made the
+// whole load about ten times slower when the output goes to a file or a pipe.
+const progressBarThrottle = 250 * time.Millisecond
 
 func newProgressBar(label string, srcs int) (*progressbar.ProgressBar, error) {
 	bar := progressbar.NewOptions(
 		srcs, // it has a bug starting At zero, so we compensate for it later
+		progressbar.OptionThrottle(progressBarThrottle),
 		progressbar.OptionFullWidth(),
 		progressbar.OptionSetDescription(label),
 		progressbar.OptionShowBytes(true),
@@ -200,13 +210,54 @@ func loadSnapshot(dir string, db database, batch int, ibgeMunicipalitiesURL, suf
 	if err := kv.flush(); err != nil {
 		return "", fmt.Errorf("could not flush key-value storage: %w", err)
 	}
+	log, closeLog, err := newETLLog()
+	if err != nil {
+		return "", err
+	}
+	defer closeLog()
+	var unknownPais map[string][]string
 	eg, egctx := errgroup.WithContext(ctx)
-	eg.Go(func() error { return loadRelational(egctx, kv, db, suffix) })
-	eg.Go(func() error { return loadEstabelecimentos(egctx, srcs, kv, db, batch, ext, suffix) })
+	eg.Go(func() error {
+		var err error
+		unknownPais, err = loadRelational(egctx, kv, db, srcs, suffix)
+		return err
+	})
+	eg.Go(func() error { return loadEstabelecimentos(egctx, log, srcs, db, batch, ext, suffix) })
 	if err := eg.Wait(); err != nil {
 		return "", err
 	}
+	if err := logUnknownPartnerCountries(ctx, log, db, "estabelecimento"+suffix, unknownPais); err != nil {
+		return "", err
+	}
 	return strings.TrimSuffix(filepath.Base(pth), ".zip"), nil
+}
+
+// newETLLog creates the JSON log file with the data inconsistencies found in
+// the load (read by the report command). The returned function closes it and
+// deletes it if nothing was logged.
+func newETLLog() (*slog.Logger, func(), error) {
+	n := fmt.Sprintf("minha-receita-etl-%s.log", time.Now().Format("20060102150405"))
+	f, err := os.Create(n)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not create log file %s: %w", n, err)
+	}
+	closeLog := func() {
+		if err := f.Close(); err != nil {
+			slog.Warn("could not close the log file", "name", n, "error", err)
+		}
+		i, err := os.Stat(n)
+		if err != nil {
+			slog.Warn("could not check log file size", "name", n, "error", err)
+			return
+		}
+		if i.Size() != 0 {
+			return
+		}
+		if err := os.Remove(n); err != nil {
+			slog.Warn("could not delete empty log file", "name", n, "error", err)
+		}
+	}
+	return slog.New(slog.NewJSONHandler(f, nil)), closeLog, nil
 }
 
 func Cleanup() error {

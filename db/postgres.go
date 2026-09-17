@@ -120,6 +120,25 @@ func (p *PostgreSQL) CopyRelational(ctx context.Context, table string, columns [
 	return nil
 }
 
+// CNPJsByBase returns, for each given CNPJ base, the CNPJs of its
+// establishments in table (estabelecimento or its staging counterpart).
+func (p *PostgreSQL) CNPJsByBase(ctx context.Context, table string, bases []string) (map[string][]string, error) {
+	out := make(map[string][]string, len(bases))
+	rows, err := p.pool.Query(ctx, "SELECT cnpj_base, cnpj FROM "+pgx.Identifier{table}.Sanitize()+" WHERE cnpj_base = ANY($1)", bases)
+	if err != nil {
+		return nil, fmt.Errorf("could not query %s by base: %w", table, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var base, cnpj string
+		if err := rows.Scan(&base, &cnpj); err != nil {
+			return nil, fmt.Errorf("could not read %s by base: %w", table, err)
+		}
+		out[base] = append(out[base], cnpj)
+	}
+	return out, rows.Err()
+}
+
 // splitStatements breaks a rendered SQL script into its statements, dropping
 // full-line comments. The scripts it is used on have no semicolons inside
 // literals or bodies.
