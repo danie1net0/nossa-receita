@@ -1,4 +1,3 @@
-DROP TABLE IF EXISTS {{ .CompanyTableFullName }} CASCADE;
 DROP TABLE IF EXISTS {{ .MetaTableFullName }} CASCADE;
 
 -- Relational source-of-truth and reference tables (migration phase 2).
@@ -15,6 +14,13 @@ DROP TABLE IF EXISTS municipio CASCADE;
 DROP TABLE IF EXISTS natureza_juridica CASCADE;
 DROP TABLE IF EXISTS qualificacao CASCADE;
 DROP TABLE IF EXISTS municipio_ibge CASCADE;
+DROP TABLE IF EXISTS situacao_cadastral CASCADE;
+DROP TABLE IF EXISTS identificador_matriz_filial CASCADE;
+DROP TABLE IF EXISTS porte CASCADE;
+DROP TABLE IF EXISTS faixa_etaria CASCADE;
+
+-- The cnpj JSONB document table of older versions.
+DROP TABLE IF EXISTS cnpj CASCADE;
 
 -- Staging tables (migration phase 4).
 DROP TABLE IF EXISTS empresa_staging CASCADE;

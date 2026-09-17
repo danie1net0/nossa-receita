@@ -1,137 +1,139 @@
 # Dicionário de dados
 
-A API web tenta manter o máximo de similaridade com o nome dos campos, significado e tipos de dados conforme os _layout_ divulgado pela Receita Federal, salvo em alguns casos:
+Os dados ficam em tabelas relacionais no PostgreSQL. As tabelas guardam os códigos e os valores como publicados pela Receita Federal; as descrições dos códigos ficam em tabelas de referência, ligadas pelo código. Algumas conversões são feitas na carga:
 
-* Campos com código numérico: adicionamos o “significado” do código numérico (por exemplo, `codigo_pais` é um número e `pais` é adicionado com o nome do país como texto)
-* Campos _booleanos_: convertemos textos como `"S"` e `"N"` para valores `true`, `false` ou `null` (em branco)
-* Código do município do IBGE é adicionado em `codigo_municipio_ibge`
-* Dados em CSV relacionados são adicionados como _arrays_ (quadro societário, CNAEs secundários e regime tributário)
+* Campos _booleanos_: textos como `"S"` e `"N"` viram `true`, `false` ou `null` (em branco)
+* Datas viram o tipo `date` do PostgreSQL
+* Telefones e fax são a concatenação do DDD com o número
+* Os CNAEs secundários, que a Receita publica numa lista separada por vírgulas, viram linhas em `estabelecimento_cnae` (um código repetido na mesma lista é gravado uma vez)
 
- Sobre o tipo dos dados:
-
-* Todos os campos, salvo `cnpj` são opcionais e podem estar em branco
-* Datas seguem o padrão `YYYY-MM-DD`
-
-## Estrutura dos dados das empresas
-
-### Dados replicados dos originais
-
-
-| Nome | Tipo | Origem | Nome no _layout_ da Receita Federal |
-|---|---|---|---|
-| `bairro` | `string` | `Estabelecimentos*.zip` | Bairro |
-| `capital_social` | `number` | `Empresas*.zip` |  Capital social da empresa |
-| `cep` | `string` | `Estabelecimentos*.zip` | CEP |
-| `cnae_fiscal` | `string` | `Estabelecimentos*.zip` | CNAE fiscal principal |
-| `codigo_municipio` | `string` | `Estabelecimentos*.zip` | Município |
-| `codigo_natureza_juridica` | `number` | `Empresas*.zip` | Natureza jurídica |
-| `codigo_pais` | `number` | `Estabelecimentos*.zip` | País |
-| `codigo_porte` | `number` | `Empresas*.zip` |  Porte da empresa |
-| `complemento` | `string` | `Estabelecimentos*.zip` | Complemeto |
-| `data_exclusao_do_mei` | `string` | `Simples.zip` | Data de exclusão do MEI |
-| `data_exclusao_do_simples` | `string` | `Simples.zip` | Data de exclusão do Simples |
-| `data_inicio_atividade` | `string` | `Estabelecimentos*.zip` | Data de início atividade |
-| `data_opcao_pelo_mei` | `string` | `Simples.zip` | Data de opção pelo MEI |
-| `data_opcao_pelo_simples` | `string` | `Simples.zip` | Data de opção pelo Simples |
-| `data_situacao_cadastral` | `string` | `Estabelecimentos*.zip` | Data situação cadastral |
-| `data_situacao_especial` | `string` | `Estabelecimentos*.zip` | Data da situação especial |
-| `descricao_tipo_de_logradouro` | `string` | `Estabelecimentos*.zip` | Tipo de logradouro |
-| `ente_federativo_responsavel` | `string` | `Empresas*.zip` | Ente federativo responsável |
-| `identificador_matriz_filial` | `number`  | `Estabelecimentos*.zip` | Identificador matriz/filial |
-| `logradouro` | `string` | `Estabelecimentos*.zip` | Logradouro |
-| `motivo_situacao_cadastral` | `numeric` | `Estabelicimentos*.zip` | Motivo da situação cadastral |
-| `nome_cidade_no_exterior` | `string` | `Estabelicimentos*.zip` | Nome da cidade no exterior |
-| `nome_fantasia` | `string` | `Estabelecimentos*.zip` | Nome fantasia |
-| `numero` | `string` | `Estabelecimentos*.zip` | Número |
-| `qualificacao_do_responsavel` | `number` | `Empresas*.zip` | Qualificação do responsável |
-| `razao_social` | `string` | `Empresas*.zip` | Razão social / Nome empresarial |
-| `situacao_cadastral` | `number` | `Estabelecimentos*.zip` | Situação cadastral |
-| `situacao_especial` | `string` | `Estabelecimentos*.zip` | Situação especial |
-| `uf` | `string` | `Estabelecimentos*.zip` | UF |
-
-
-### Dados enriquecidos
+Salvo as chaves (`cnpj`, `cnpj_base`), todas as colunas podem estar em branco.
 
 !!! warning "Aviso"
-    A Receita Federal, em outubro de 2025, passou a divulgar diversos códigos de países que não constam no `Paises.zip`. Seguindo outros documentos da própria Receita Federal ([exemplo](https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv)) o Minha Receita vai adicionar esses códigos de países nos dados: 15 (Aland, Ilhas), 150 (Ilhas do Guernsey), 151 (Canárias, Ilhas), 200 (Curaçao), 321 (Guernsey), 359 (Ilha de Man), 367 (Inglaterra), 393 (Jersey), 449 (Macedônia), 452 (Madeira, Ilha da), 498 (Montenegro), 578 (Palestina), 678 (Saint Kitts e Nevis), 699 (Sint Maarten), 737 (Sérvia) e 994 (A Designar).
+    A Receita Federal, em outubro de 2025, passou a divulgar diversos códigos de países que não constam no `Paises.zip`. Seguindo outros documentos da própria Receita Federal ([exemplo](https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv)) o Minha Receita adiciona esses códigos na tabela `pais`: 15 (Aland, Ilhas), 150 (Ilhas do Guernsey), 151 (Canárias, Ilhas), 200 (Curaçao), 321 (Guernsey), 359 (Ilha de Man), 367 (Inglaterra), 393 (Jersey), 449 (Macedônia), 452 (Madeira, Ilha da), 498 (Montenegro), 578 (Palestina), 678 (Saint Kitts e Nevis), 699 (Sint Maarten), 737 (Sérvia) e 994 (A Designar).
 
+## `empresa`
 
-| Nome | Tipo | Origem | Descrição |
+Uma linha por CNPJ básico (os 8 primeiros dígitos), de `Empresas*.zip`.
+
+| Coluna | Tipo | Nome no _layout_ da Receita Federal | Descrição em |
 |---|---|---|---|
-| `cnae_fiscal_descricao` | `string` | `Estabelecimentos*.zip` e `Cnaes.zip` | Conversão de acordo com arquivo `Cnaes.zip` |
-| `cnpj` | `string` |  `Empresas*.zip` e `Estabelecimentos*.zip` | Concatenação de CNPJ Básico, CNPJ ordem e CNPJ DV |
-| `codigo_municipio_ibge` | `number` | `Estabelecimentos*.zip` e `TABMUN.CSV` [do Tesouro Nacional](https://www.tesourotransparente.gov.br/ckan/dataset/abb968cb-3710-4f85-89cf-875c91b9c7f6/resource/eebb3bc6-9eea-4496-8bcf-304f33155282/) | Conversão de acordo com ambos os arquivos |
-| `ddd_fax` | `string` | `Estabelecimentos*.zip` | Concatenação de DDD do fax e Fax |
-| `ddd_telefone_1` | `string` | `Estabelecimentos*.zip` | Concatenação de DDD 1 e Telefone 1 |
-| `ddd_telefone_2` | `string` | `Estabelecimentos*.zip` | Concatenação de DDD 2 e Telefone 2 |
-| `descricao_identificador_matriz_filial` | `string` | `Estabelecimentos*.zip` | Conversão do `identificador_matriz_filial` de acordo com o _layout_ |
-| `descricao_motivo_situacao_cadastral` | `string` | `Estabelecimentos*.zip` e `Motivos.zip` | Conversão de acordo com arquivo `Motivos.zip`  |
-| `descricao_situacao_cadastral` | `string` | `Estabelecimentos*.zip` | Conversão da `situacao_cadastral` de acordo com o _layout_ |
-| `municipio` | `string` | `Estabelecimentos*.zip` e `Municipios.zip` | Conversão de acordo com arquivo `Municipios.zip` |
-| `natureza_juridica` | `string` | `Empresas*.zip` e `Naturezas.zip` | Conversão de acordo com arquivo `Naturezas.zip` |
-| `opcao_pelo_mei` | `boolean` | `Simples.zip` | Conversão de `"S"`/`"N"` para `boolean` |
-| `opcao_pelo_simples` | `boolean` | `Simples.zip` | Conversão de `"S"`/`"N"` para `boolean` |
-| `pais` | `string` | `Estabelecimentos*.zip` e `Paises.zip` | Conversão de acordo com arquivo `Paises.zip` |
-| `porte` | `string` | `Empresas*.zip` | Conversão de acordo com o _layout_ |
+| `cnpj_base` | `char(8)` | CNPJ básico | |
+| `razao_social` | `text` | Razão social / Nome empresarial | |
+| `codigo_natureza_juridica` | `int` | Natureza jurídica | `natureza_juridica` |
+| `qualificacao_do_responsavel` | `int` | Qualificação do responsável | `qualificacao` |
+| `capital_social` | `double precision` | Capital social da empresa | |
+| `codigo_porte` | `int` | Porte da empresa | `porte` |
+| `ente_federativo_responsavel` | `text` | Ente federativo responsável | |
 
+## `estabelecimento`
 
-## Estrutura dos dados do quadro societário
+Uma linha por CNPJ completo, de `Estabelecimentos*.zip`.
 
-### Dados replicados dos originais
-
-
-| Nome | Tipo | Origem | Nome no _layout_ da Receita Federal |
+| Coluna | Tipo | Nome no _layout_ da Receita Federal | Descrição em |
 |---|---|---|---|
-| `cnpj_cpf_do_socio` | `string` | `Socios*.zip` | CNPJ/CPF do sócio |
-| `codigo_faixa_etaria` | `number` | `Socios*.zip` | Faixa etária |
-| `codigo_pais` | `number` | `Socios*.zip` | País |
-| `codigo_qualificacao_representante_legal` | `number` | `Socios*.zip` | Qualificação do representante legal |
-| `codigo_qualificacao_socio` | `number` | `Socios*.zip` | Qualificação do sócio |
-| `cpf_representante_legal` | `string` | `Socios*.zip` | Representante legal |
-| `data_entrada_sociedade` | `string` | `Socios*.zip` | Data de entrada sociedade |
-| `identificador_de_socio` | `number` | `Socios*.zip` | Identificador de sócio |
-| `nome_representante_legal` | `string` | `Socios*.zip` | Nome do representante |
-| `nome_socio` | `string` | `Socios*.zip` | Nome do sócio (no caso PF) ou razão social (no caso PJ) |
+| `cnpj` | `char(14)` | CNPJ básico, ordem e DV concatenados | |
+| `cnpj_base` | `char(8)` | CNPJ básico | liga com `empresa`, `simples` e `socio` |
+| `identificador_matriz_filial` | `int` | Identificador matriz/filial | `identificador_matriz_filial` |
+| `nome_fantasia` | `text` | Nome fantasia | |
+| `situacao_cadastral` | `int` | Situação cadastral | `situacao_cadastral` |
+| `data_situacao_cadastral` | `date` | Data situação cadastral | |
+| `motivo_situacao_cadastral` | `int` | Motivo da situação cadastral | `motivo` |
+| `nome_cidade_no_exterior` | `text` | Nome da cidade no exterior | |
+| `codigo_pais` | `int` | País | `pais` |
+| `data_inicio_atividade` | `date` | Data de início atividade | |
+| `cnae_fiscal` | `int` | CNAE fiscal principal | `cnae` |
+| `descricao_tipo_de_logradouro` | `text` | Tipo de logradouro | |
+| `logradouro` | `text` | Logradouro | |
+| `numero` | `text` | Número | |
+| `complemento` | `text` | Complemento | |
+| `bairro` | `text` | Bairro | |
+| `cep` | `text` | CEP | |
+| `uf` | `char(2)` | UF | |
+| `codigo_municipio` | `int` | Município (código da Receita) | `municipio`; código do IBGE em `municipio_ibge` |
+| `ddd_telefone_1` | `text` | DDD 1 e Telefone 1 | |
+| `ddd_telefone_2` | `text` | DDD 2 e Telefone 2 | |
+| `ddd_fax` | `text` | DDD do fax e Fax | |
+| `email` | `text` | Correio eletrônico | |
+| `situacao_especial` | `text` | Situação especial | |
+| `data_situacao_especial` | `date` | Data da situação especial | |
 
+## `estabelecimento_cnae`
 
-### Dados enriquecidos
+CNAEs secundários, de `Estabelecimentos*.zip`.
 
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `cnpj` | `char(14)` | liga com `estabelecimento` |
+| `cnae` | `int` | CNAE fiscal secundária (descrição em `cnae`) |
+| `ordem` | `int` | posição na lista original, a partir de 0 |
 
-| Nome | Tipo | Origem | Descrição |
+## `simples`
+
+Uma linha por CNPJ básico, de `Simples.zip`.
+
+| Coluna | Tipo | Nome no _layout_ da Receita Federal |
+|---|---|---|
+| `cnpj_base` | `char(8)` | CNPJ básico |
+| `opcao_pelo_simples` | `boolean` | Opção pelo Simples |
+| `data_opcao_pelo_simples` | `date` | Data de opção pelo Simples |
+| `data_exclusao_do_simples` | `date` | Data de exclusão do Simples |
+| `opcao_pelo_mei` | `boolean` | Opção pelo MEI |
+| `data_opcao_pelo_mei` | `date` | Data de opção pelo MEI |
+| `data_exclusao_do_mei` | `date` | Data de exclusão do MEI |
+
+## `socio`
+
+Quadro societário, de `Socios*.zip`.
+
+| Coluna | Tipo | Nome no _layout_ da Receita Federal | Descrição em |
 |---|---|---|---|
-| `faixa_etaria` | `string` | `Socios*.zip` | Conversão de acordo com o _layout_ |
-| `pais` | `string` | `Socios*.zip` e `Paises.zip` | Conversão de acordo com arquivo `Paises.zip` |
-| `qualificacao_representante_legal` | `string` | `Socios*.zip` e `Qualificacoes.zip` | Conversão de acordo com arquivo `Qualificacoes.zip` |
-| `qualificacao_socio` | `string` | `Socios*.zip` e `Qualificacoes.zip` | Conversão de acordo com arquivo `Qualificacoes.zip` |
+| `cnpj_base` | `char(8)` | CNPJ básico | |
+| `identificador_de_socio` | `int` | Identificador de sócio | |
+| `nome_socio` | `text` | Nome do sócio (no caso PF) ou razão social (no caso PJ) | |
+| `cnpj_cpf_do_socio` | `text` | CNPJ/CPF do sócio | |
+| `codigo_qualificacao_socio` | `int` | Qualificação do sócio | `qualificacao` |
+| `data_entrada_sociedade` | `date` | Data de entrada sociedade | |
+| `codigo_pais` | `int` | País | `pais` |
+| `cpf_representante_legal` | `text` | Representante legal | |
+| `nome_representante_legal` | `text` | Nome do representante | |
+| `codigo_qualificacao_representante_legal` | `int` | Qualificação do representante legal | `qualificacao` |
+| `codigo_faixa_etaria` | `int` | Faixa etária | `faixa_etaria` |
 
+## `regime_tributario`
 
-## Estrutura dos dados dos CNAEs secundários
+Regime tributário, de `entidades-imunes-e-isentas.zip`, `entidades-lucro-arbitrado.zip`, `entidades-lucro-presumido.zip` e `entidades-lucro-real.zip`.
 
-O campo `cnaes_secundarios` é um _array_ composto de:
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `cnpj` | `char(14)` | liga com `estabelecimento` |
+| `tipo` | `text` | arquivo de origem: `imune-isenta`, `arbitrado`, `presumido` ou `real` |
+| `ano` | `int` | ano |
+| `cnpj_da_scp` | `text` | CNPJ da SCP |
+| `forma_de_tributacao` | `text` | forma de tributação |
+| `quantidade_de_escrituracoes` | `int` | quantidade de escriturações |
 
-### Dados replicados dos originais
+## Tabelas de referência
 
+Todas têm as colunas `codigo` (`int`) e `descricao` (`text`), exceto `municipio_ibge`.
 
-| Nome | Tipo | Origem | Nome no _layout_ da Receita Federal |
-|---|---|---|---|
-| `codigo` | `number` | `Estabelecimentos*.zip` | CNAE fiscal secundária |
-
-
-### Dados enriquecidos
-
-
-| Nome | Tipo | Origem | Descrição |
-|---|---|---|---|
-| `descricao` | `string` | `Estabelecimentos*.zip` e `Cnaes.zip` | Conversao de acordo com arquivo `Cnaes.zip` |
-
-
-## Estrutura dos dados do regime tributário
-
-O campo `regime_tributário` é um _array_ com dados oriundos de `Imunes e Isentas.zip`, `Lucro Arbitrado.zip`, `Lucro Presumido.zip` ou `Lucro Real.zip` , composto de:
-
-| Nome | Tipo |
+| Tabela | Origem |
 |---|---|
-| `ano` | `number` |
-| `cnpj_da_scp` | `string` |
-| `forma_de_tributação` | `string` |
-| `quantidade_de_escrituracoes` | `number` |
+| `cnae` | `Cnaes.zip` |
+| `motivo` | `Motivos.zip` |
+| `municipio` | `Municipios.zip` |
+| `natureza_juridica` | `Naturezas.zip` |
+| `pais` | `Paises.zip` (mais os códigos do aviso acima) |
+| `qualificacao` | `Qualificacoes.zip` |
+| `situacao_cadastral` | _layout_ da Receita Federal |
+| `identificador_matriz_filial` | _layout_ da Receita Federal |
+| `porte` | _layout_ da Receita Federal |
+| `faixa_etaria` | _layout_ da Receita Federal |
+| `municipio_ibge` | [`TABMUN.CSV` do Tesouro Nacional](https://www.tesourotransparente.gov.br/ckan/dataset/abb968cb-3710-4f85-89cf-875c91b9c7f6/resource/eebb3bc6-9eea-4496-8bcf-304f33155282/): `codigo_municipio` (código da Receita) e `codigo_ibge` |
+
+## `meta`
+
+| Coluna | Descrição |
+|---|---|
+| `key` | chave; `updated-at` guarda o mês do snapshot carregado (`YYYY-MM`) |
+| `value` | valor |

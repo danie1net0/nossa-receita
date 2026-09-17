@@ -14,11 +14,11 @@ $ git clone https://codeberg.org/cuducos/minha-receita.git
 
 ## Requisitos e instalação
 
-É necessário cerca de 170Gb disponíveis de espaço em disco para armazenar os dados. Caso o banco de dados esteja em uma máquina separada, a divisão é mais ou menos 140Gb para as tabelas no banco de dados, 10Gb para os índices no banco de dados, e 20Gb para a máquina que vai fazer o download dos dados e transformá-los para carregar no banco de dados.
+O banco de dados completo ocupa cerca de 55Gb, com os índices. A máquina que faz o download e a transformação dos dados precisa de mais cerca de 30Gb temporários, e o `update` precisa de espaço para uma segunda cópia das tabelas (as de _staging_) enquanto roda.
 
 ### Banco de dados
 
-* O banco de dados gerado utiliza cerca de 140Gb
+* O banco de dados gerado utiliza cerca de 55Gb
 * Rodar o banco de dados localmente com Docker só é recomendado para desenvolvimento (não recomendado para o banco de dados completo)
 
 #### Download e transformação dos dados
@@ -70,21 +70,18 @@ Várias configurações podem ser passadas para a CLI, e elas estão documentada
 
 ```console
 $ docker run --rm atcr.io/cuducos.me/minha-receita:main --help
-$ docker run --rm atcr.io/cuducos.me/minha-receita:main api --help
 ```
 
 #### A partir do código fonte
 
 ```console
 $ minha-receita --help
-$ minha-receita api --help
 ```
 
 #### Docker Compose
 
 ```console
 $ docker compose run --rm minha-receita --help
-$ docker compose run --rm minha-receita api --help
 ```
 
 ### Variáveis de ambiente
@@ -94,7 +91,4 @@ Para facilitar a manutenção, algumas variáveis de ambiente podem ser utilizad
 | Variável | Descrição |
 |---|---|
 | `DATABASE_URL` | URI de acesso ao banco de dados |
-| `PORT` | Porta na qual a API web ficará disponível |
-| `CACHE_SIZE` | Tamanho máximo do cache em MB |
-| `BLOOM_FILTER_SIZE` | Tamanho máximo do bloom filter em MB |
 | `TEST_POSTGRES_URL` | URI de acesso ao banco de dados PostgreSQL para ser utilizado nos testes |

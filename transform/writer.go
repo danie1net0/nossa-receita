@@ -2,7 +2,6 @@ package transform
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/csv"
 	"errors"
@@ -12,39 +11,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/encoding/charmap"
 )
 
-func worker(ctx context.Context, db database, s int, ch <-chan []string) error {
-	var b [][]string
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case row, ok := <-ch:
-			if !ok {
-				if len(b) > 0 {
-					return db.CreateCompanies(ctx, b)
-				}
-				return nil
-			}
-			b = append(b, row)
-			if len(b) >= s {
-				if err := db.CreateCompanies(ctx, b); err != nil {
-					return err
-				}
-				b = [][]string{}
-			}
-		}
-	}
-}
-
-func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db database, maxDB, batch int, ext string, privacy bool, suffix string, writeDoc bool) error {
-	bar, err := newProgressBar("[3/3] Writing JSONs", 1)
+// loadEstabelecimentos streams the Estabelecimentos CSVs, parses each row (with
+// the key-value store, which also logs codes missing from the reference files
+// for the report command) and writes the estabelecimento and secondary-CNAE
+// relational tables.
+func loadEstabelecimentos(ctx context.Context, srcs map[string]*source, kv *kv, db database, batch int, ext string, suffix string) error {
+	bar, err := newProgressBar("[3/3] Loading establishments", 1)
 	if err != nil {
 		return fmt.Errorf("could not create a progress bar: %w", err)
 	}
@@ -74,31 +52,10 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 	}()
 	log := slog.New(slog.NewJSONHandler(f, nil))
 	src := newCompanySrc("Estabelecimentos", ';', false, false)
-	buf := &sync.Pool{
-		New: func() any {
-			return &bytes.Buffer{}
-		},
-	}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	estabTable := "estabelecimento" + suffix
 	cnaeTable := "estabelecimento_cnae" + suffix
-	var ch chan []string
-	var consumers errgroup.Group
-	if writeDoc {
-		// One batch of slack is enough to keep the producers from blocking on
-		// every row; the workers already buffer a batch each. A buffer of
-		// batch*maxDB held millions of JSON documents in memory on a full load.
-		ch = make(chan []string, batch)
-		for range maxDB {
-			consumers.Go(func() error {
-				if err := worker(ctx, db, batch, ch); err != nil {
-					cancel(err)
-				}
-				return nil
-			})
-		}
-	}
 	pths, err := os.ReadDir(ext)
 	if err != nil {
 		return fmt.Errorf("could not read directory %s: %w", ext, err)
@@ -187,20 +144,6 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 									return err
 								}
 							}
-							if writeDoc {
-								if privacy {
-									c.withPrivacy()
-								}
-								j, err := c.JSON(buf)
-								if err != nil {
-									return err
-								}
-								select {
-								case <-ctx.Done():
-									return context.Cause(ctx)
-								case ch <- []string{c.CNPJ, j}:
-								}
-							}
 							s := b.read - prev
 							if s > 0 {
 								if err := bar.Add64(s); err != nil {
@@ -221,20 +164,5 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 			return nil
 		})
 	}
-	err1 := producers.Wait()
-	var err2 error
-	if writeDoc {
-		close(ch)
-		err2 = consumers.Wait()
-	}
-	if err1 != nil && err2 != nil {
-		return fmt.Errorf("errors writing json: (producer error) %w, (consumer error) %w", err1, err2)
-	}
-	if err1 != nil {
-		return err1
-	}
-	if err2 != nil {
-		return err2
-	}
-	return nil
+	return producers.Wait()
 }

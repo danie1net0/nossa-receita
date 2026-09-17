@@ -8,21 +8,19 @@ import (
 )
 
 const transformHelper = `
-Convert the CSV files from the Federal Revenue for venues (Estabelecimentos*.zip
-group of files) into records in the database, 1 record per CNPJ, joining
-information from all other source CSV files.
+Loads the CSV files from the Federal Revenue into the relational tables of the
+database (empresa, estabelecimento, socio, simples, regime_tributario,
+estabelecimento_cnae and the reference tables).
 
 The transformation process is divided into three steps:
 1. Unarchive the bundled ZIP file for a given month/year
-2. Load relational data to a key-value store
-3. Load the full database using the key-value store
+2. Load the source files to a key-value store
+3. Load the database from the key-value store and the establishment files
 `
 
 var (
-	maxParallelDBQueries int
-	batchSize            int
-	cleanUp              bool
-	noPrivacy            bool
+	batchSize int
+	cleanUp   bool
 )
 
 var transformCmd = &cobra.Command{
@@ -43,7 +41,7 @@ var transformCmd = &cobra.Command{
 				return err
 			}
 		}
-		return transform.Transform(dir, db, batchSize, maxParallelDBQueries, !noPrivacy)
+		return transform.Transform(dir, db, batchSize)
 	},
 }
 
@@ -56,19 +54,10 @@ var cleanupTempCmd = &cobra.Command{
 }
 
 func transformCLI() *cobra.Command {
-	transformCmd.Flags().IntVarP(
-		&maxParallelDBQueries,
-		"max-parallel-db-queries",
-		"m",
-		transform.MaxParallelDBQueries,
-		"maximum parallel database queries",
-	)
-
 	batchSize = transform.PostgresBatchSize
 
-	transformCmd.Flags().BoolVarP(&cleanUp, "clean-up", "c", cleanUp, "drop & recreate the database table before starting")
+	transformCmd.Flags().BoolVarP(&cleanUp, "clean-up", "c", cleanUp, "drop & recreate the database tables before starting")
 	transformCmd.Flags().IntVarP(&batchSize, "batch-size", "b", batchSize, "size of the batch to save to the database")
-	transformCmd.Flags().BoolVarP(&noPrivacy, "no-privacy", "p", noPrivacy, "include email addresses, CPF and other PII in the JSON data")
-	transformCmd.Flags().BoolVarP(&args.PostgresLogged, "logged", "l", args.PostgresLogged, "avoids the disk overhead but writes slowly to the table (PostgreSQL only)")
+	transformCmd.Flags().BoolVarP(&args.PostgresLogged, "logged", "l", args.PostgresLogged, "avoids the disk overhead but writes slowly to the tables")
 	return transformCmd
 }

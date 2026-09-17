@@ -7,7 +7,6 @@ SET maintenance_work_mem TO '512MB';
 -- Make the tables durable again first: SET LOGGED rewrites the heap and every
 -- index on it, so doing it before rebuilding the secondary indexes avoids
 -- writing those indexes twice.
-ALTER TABLE {{ .CompanyTableFullName }} SET LOGGED;
 ALTER TABLE empresa SET LOGGED;
 ALTER TABLE estabelecimento SET LOGGED;
 ALTER TABLE simples SET LOGGED;

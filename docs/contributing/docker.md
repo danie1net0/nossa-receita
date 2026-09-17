@@ -30,7 +30,7 @@ As configurações padrão desses bancos são:
 ## Rodando o projeto todo com Docker
 
 !!! warning "Aviso"
-    O ETL não costuem funcionar com Docker. Mas, depois de carregar os dados, rodar o banco de dados e a API com Docker normalmente funciona.
+    O ETL não costuma funcionar bem com Docker. Mas, depois de carregar os dados, rodar o banco de dados com Docker normalmente funciona.
 
 Se for utilizar Docker para rodar o projeto todo, copie o arquivo `.env.sample` como `.env` — e ajuste, se necessário.
 

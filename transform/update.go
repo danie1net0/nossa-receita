@@ -10,50 +10,34 @@ import (
 // It is implemented by the PostgreSQL backend.
 type incrementalDB interface {
 	database
-	MaterializeDB
 	PrepareStaging() error
-	ComputeDelta(context.Context) (rebuild, deletes []string, err error)
 	ApplyDelta(context.Context) error
-	DeleteDocuments(context.Context, []string) error
 }
 
 // Update applies a new monthly snapshot incrementally: it loads the snapshot
-// into the staging tables, diffs them against the live tables, applies only the
-// changes, and rebuilds only the affected documents. Source ZIPs must already be
-// in dir, as with Transform.
-func Update(dir string, db incrementalDB, batch, maxDB int, privacy bool) error {
+// into the staging tables and changes only the live rows that differ from it.
+// Source ZIPs must already be in dir, as with Transform.
+func Update(dir string, db incrementalDB, batch int) error {
 	ibgeMunicipalitiesURL, err := ibgeMunicipalitiesURL()
 	if err != nil {
 		return fmt.Errorf("could not discover ibge municipalities URL: %w", err)
 	}
-	return update(dir, db, batch, maxDB, privacy, ibgeMunicipalitiesURL)
+	return update(dir, db, batch, ibgeMunicipalitiesURL)
 }
 
-func update(dir string, db incrementalDB, batch, maxDB int, privacy bool, ibgeMunicipalitiesURL string) error {
+func update(dir string, db incrementalDB, batch int, ibgeMunicipalitiesURL string) error {
 	ctx := context.Background()
 	if err := db.PrepareStaging(); err != nil {
 		return fmt.Errorf("could not prepare staging tables: %w", err)
 	}
 	slog.Info("Loading the new snapshot into staging…")
-	label, err := loadSnapshot(dir, db, batch, maxDB, privacy, ibgeMunicipalitiesURL, "_staging", false)
+	label, err := loadSnapshot(dir, db, batch, ibgeMunicipalitiesURL, "_staging")
 	if err != nil {
 		return err
 	}
-	slog.Info("Computing the delta…")
-	rebuild, deletes, err := db.ComputeDelta(ctx)
-	if err != nil {
-		return err
-	}
-	slog.Info("Delta computed", "rebuild", len(rebuild), "delete", len(deletes))
+	slog.Info("Applying the changes…")
 	if err := db.ApplyDelta(ctx); err != nil {
 		return fmt.Errorf("could not apply the delta: %w", err)
-	}
-	slog.Info("Materializing the affected documents…")
-	if err := Materialize(ctx, db, rebuild, privacy, slog.Default()); err != nil {
-		return fmt.Errorf("could not materialize the rebuilt documents: %w", err)
-	}
-	if err := db.DeleteDocuments(ctx, deletes); err != nil {
-		return fmt.Errorf("could not delete removed documents: %w", err)
 	}
 	return saveUpdatedAt(db, label)
 }

@@ -109,20 +109,17 @@ flowchart
 
     Ext -->|Lê Estabelecimentos| ETL3
     Bad -->|Enriquece| ETL3
-    ETL3 -->|JSON| DB
+    ETL3 -->|Escreve| DB
 ```
 
 | Etapa | Descrição | Armazenamento |
 |:-:|---|---
 | 1 | Descomprime `YYYY-MM.zip` em diretório temporário em disco | Disco |
 | 2 | Carrega pares de chave e valor para: `Cnaes.zip`, `Motivos.zip`, `Municipios.zip`, `Paises.zip`, `Naturezas.zip`, `Qualificacoes.zip`, `Empresas*`, `Socios*`, `Simples.zip`, regimes tributários (`entidades-*.zip`) e códigos dos municípios do IBGE | [Badger](https://dgraph.io/docs/badger/) |
-| 3 | Lê os arquivos `Estabelecimentos*`, enriquece com os dados da etapa anterior e salva os resultados no banco de dados | Banco de dados |
+| 3 | Grava no banco as tabelas relacionais a partir da etapa anterior e lê os arquivos `Estabelecimentos*` para gravar `estabelecimento` e `estabelecimento_cnae` | Banco de dados |
 
 ## Modelo relacional e atualização incremental
 
-Na etapa 3, além do documento JSON (um por CNPJ na tabela `cnpj`), o ETL faz um **dual-write**: grava também tabelas relacionais normalizadas (`empresa`, `estabelecimento`, `socio`, `simples`, `regime_tributario`, `estabelecimento_cnae` e as tabelas de referência). Essas tabelas relacionais são a **fonte de verdade**; o documento JSON é uma projeção materializada delas.
+Na etapa 3, o ETL grava as tabelas relacionais (`empresa`, `estabelecimento`, `socio`, `simples`, `regime_tributario`, `estabelecimento_cnae` e as tabelas de referência), que são os dados do projeto.
 
-Isso habilita duas coisas:
-
-* **Materialização:** reconstruir o documento JSON de um CNPJ a partir das tabelas relacionais — resolvendo as descrições pelas tabelas de referência e reaproveitando a mesma serialização do ETL, de modo que o resultado é idêntico ao do dual-write.
-* **Atualização incremental (`update`):** em vez de recriar o banco inteiro a cada mês, o snapshot novo é carregado em tabelas de _staging_, comparado com os dados atuais por _hash_ (e por conjunto, para as coleções de sócios e CNAEs), e apenas as diferenças são aplicadas — refazendo só os documentos dos CNPJs afetados. O critério de correção é que aplicar o mês N+1 incrementalmente produza um banco idêntico a uma recarga completa do N+1.
+A **atualização incremental (`update`)** evita recriar o banco inteiro a cada mês: o snapshot novo é carregado em tabelas de _staging_, comparado com os dados atuais por _hash_ (e por conjunto, para as coleções de sócios, CNAEs secundários e regimes tributários, e por valor, para as tabelas de referência), e apenas as diferenças são aplicadas. O critério de correção é que aplicar o mês N+1 incrementalmente produza um banco idêntico a uma recarga completa do N+1.

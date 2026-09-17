@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -15,30 +14,9 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const (
-	// PostgresBatchSize determines the size of the batches used to create the initial JSON in Postgres
-	// data in the database. Each of the MaxParallelDBQueries workers holds up to
-	// one batch of JSON documents in memory: with 65536 a full load swapped
-	// heavily on a 16GB machine, while 8192 keeps it at a few GB.
-	PostgresBatchSize = 8192
-
-	// MaxParallelDBQueries is the default for maximum number of parallels save
-	// queries sent to the database
-	MaxParallelDBQueries = 16
-)
-
-var validIndexName = regexp.MustCompile(`^[a-z_.]+$`)
-
-// ValidateIndexes checks that the given index names are valid JSON field paths
-// (only lowercase letters, underscores, and dots).
-func ValidateIndexes(idxs []string) error {
-	for _, idx := range idxs {
-		if !validIndexName.MatchString(idx) {
-			return fmt.Errorf("invalid index name %q: only lowercase letters, underscores and dots are allowed", idx)
-		}
-	}
-	return nil
-}
+// PostgresBatchSize is the number of rows buffered per COPY into the relational
+// tables.
+const PostgresBatchSize = 8192
 
 // In Oct. 2025 the Federal Revenue started using the country code 367. which is
 // not present in Paises.zip. The issue was officially reported to them via
@@ -73,7 +51,6 @@ var extraCounties = map[int]string{
 
 type database interface {
 	PreLoad() error
-	CreateCompanies(context.Context, [][]string) error
 	CopyRelational(context.Context, string, []string, [][]any) error
 	PostLoad() error
 	MetaSave(string, string) error
@@ -132,19 +109,19 @@ func postLoad(db database) error {
 	return nil
 }
 
-func Transform(dir string, db database, batch, maxDB int, privacy bool) error {
+func Transform(dir string, db database, batch int) error {
 	ibgeMunicipalitiesURL, err := ibgeMunicipalitiesURL()
 	if err != nil {
 		return fmt.Errorf("could not discover ibge municipalities URL: %w", err)
 	}
-	return transform(dir, db, batch, maxDB, privacy, ibgeMunicipalitiesURL)
+	return transform(dir, db, batch, ibgeMunicipalitiesURL)
 }
 
-func transform(dir string, db database, batch, maxDB int, privacy bool, ibgeMunicipalitiesURL string) error {
+func transform(dir string, db database, batch int, ibgeMunicipalitiesURL string) error {
 	if err := db.PreLoad(); err != nil {
 		return err
 	}
-	label, err := loadSnapshot(dir, db, batch, maxDB, privacy, ibgeMunicipalitiesURL, "", true)
+	label, err := loadSnapshot(dir, db, batch, ibgeMunicipalitiesURL, "")
 	if err != nil {
 		return err
 	}
@@ -155,10 +132,9 @@ func transform(dir string, db database, batch, maxDB int, privacy bool, ibgeMuni
 }
 
 // loadSnapshot extracts the source archive, loads the lookup/relational data
-// into the key-value store, then writes the relational tables (and, when
-// writeDoc is set, the JSONB documents). The suffix targets the entity tables
-// (e.g. "_staging"). It returns the snapshot label (YYYY-MM).
-func loadSnapshot(dir string, db database, batch, maxDB int, privacy bool, ibgeMunicipalitiesURL, suffix string, writeDoc bool) (string, error) {
+// into the key-value store, then writes the relational tables. The suffix
+// targets the tables (e.g. "_staging"). It returns the snapshot label (YYYY-MM).
+func loadSnapshot(dir string, db database, batch int, ibgeMunicipalitiesURL, suffix string) (string, error) {
 	srcs := sources()
 	pth, err := findMainZIP(dir)
 	if err != nil {
@@ -226,7 +202,7 @@ func loadSnapshot(dir string, db database, batch, maxDB int, privacy bool, ibgeM
 	}
 	eg, egctx := errgroup.WithContext(ctx)
 	eg.Go(func() error { return loadRelational(egctx, kv, db, suffix) })
-	eg.Go(func() error { return writeJSONs(egctx, srcs, kv, db, maxDB, batch, ext, privacy, suffix, writeDoc) })
+	eg.Go(func() error { return loadEstabelecimentos(egctx, srcs, kv, db, batch, ext, suffix) })
 	if err := eg.Wait(); err != nil {
 		return "", err
 	}

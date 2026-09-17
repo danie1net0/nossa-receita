@@ -21,7 +21,6 @@ DROP INDEX IF EXISTS idx_empresa_natureza;
 
 -- Unlogged during the bulk load: no WAL, no fsync per COPY. post_load restores
 -- durability with SET LOGGED.
-ALTER TABLE {{ .CompanyTableFullName }} SET UNLOGGED;
 ALTER TABLE empresa SET UNLOGGED;
 ALTER TABLE estabelecimento SET UNLOGGED;
 ALTER TABLE simples SET UNLOGGED;

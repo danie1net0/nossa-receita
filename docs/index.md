@@ -11,18 +11,7 @@ Pela [Lei de Acesso à Informação](http://www.acessoainformacao.gov.br/assunto
 O código desse repositório faz esses dados ainda mais acessíveis:
 
 1. Consolidar todas as informações em um banco de dados único
-1. Fornecendo uma API web para a consulta de dados de um CNPJ
-
-## Acessando a API pública
-
-Disponibilizo essa aplicação para que cada um rode na sua própria infraestrutura, e também existe uma API web no ar em [`https://minhareceita.org/`](https://minhareceita.org) (confira o [monitor de status](https://stats.uptimerobot.com/tqpD6AQZqI)).
-
-Para fazer uma consulta usando a API web, acrescente o CNPJ a ser consultado ao final da URL. Por exemplo: `https://minhareceita.org/33.683.111/0002-80`. Para mais detalhes sobre como utilizar a API, confira a seção [Como usar](como-usar.md).
-
-!!! important "Limites e disponibilidade"
-    A API web não tem nenhuma [garantia de nível de serviço](https://pt.wikipedia.org/wiki/Acordo_de_n%C3%ADvel_de_servi%C3%A7o) e a única forma de aumentar sua disponibilidade e diminuir o tempo de resposta é com [contribuições mensais](https://apoia.se/minhareceita) ou contribuições pontuais via Pix (`d6ede813-6621-4df4-9a93-8d0108fd9b6a`).
-
-As [métricas de uso da API web são públicas](https://metrics.minhareceita.org), mas nenhum dado específico sobre cada requisição é coletado (por exemplo, qual CNPJ foi consultado, ou o IP de onde partiu a requisição).
+1. Mantendo esse banco atualizado mês a mês de forma incremental
 
 ## Contato
 

@@ -22,23 +22,9 @@ type database interface {
 
 	// transform
 	PreLoad() error
-	CreateCompanies(context.Context, [][]string) error
 	CopyRelational(context.Context, string, []string, [][]any) error
 	PostLoad() error
 	MetaSave(string, string) error
-
-	// extra indexes
-	CreateExtraIndexes(idxs []string) error
-
-	// api
-	GetCompany(context.Context, string) (string, error)
-	Search(context.Context, *db.Query) (string, error)
-	MetaRead(string) (string, error)
-	AllCompanies(context.Context, func(string)) error
-
-	// graph
-	CreateGraphTable() error
-	GetRelated(context.Context, string) ([]db.GraphEdge, error)
 }
 
 func loadPostgres(args *DatabaseArgs) (*db.PostgreSQL, error) {

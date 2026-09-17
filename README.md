@@ -4,7 +4,7 @@
 
 [![Testes](https://ci.codeberg.org/api/badges/15902/status.svg)](https://ci.codeberg.org/repos/15902)
 
-API web para consulta de informações do CNPJ (Cadastro Nacional da Pessoa Jurídica) da Receita Federal.
+Banco de dados PostgreSQL com as informações do CNPJ (Cadastro Nacional da Pessoa Jurídica) da Receita Federal, com atualização mensal incremental.
 
 [Documentação](https://docs.minhareceita.org)<br>
 [Guia de contribuição](https://docs.minhareceita.org/contributing/)<br>

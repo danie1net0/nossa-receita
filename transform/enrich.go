@@ -307,3 +307,31 @@ func (c *Company) porte(log *slog.Logger) error {
 	c.Porte = &p
 	return nil
 }
+
+// faixaEtaria maps a partner's age-bracket code to its description.
+func faixaEtaria(code int) string {
+	switch code {
+	case 0:
+		return "Não se aplica"
+	case 1:
+		return "Entre 0 a 12 anos"
+	case 2:
+		return "Entre 13 a 20 ano"
+	case 3:
+		return "Entre 21 a 30 anos"
+	case 4:
+		return "Entre 31 a 40 anos"
+	case 5:
+		return "Entre 41 a 50 anos"
+	case 6:
+		return "Entre 51 a 60 anos"
+	case 7:
+		return "Entre 61 a 70 anos"
+	case 8:
+		return "Entre 71 a 80 anos"
+	case 9:
+		return "Maiores de 80 anos"
+	default:
+		return ""
+	}
+}

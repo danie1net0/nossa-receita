@@ -6,129 +6,6 @@ import (
 	"strings"
 )
 
-// deleteQuery finds estabelecimentos that exist live but not in staging: their
-// CNPJ was removed from the snapshot, so the document must be deleted.
-const deleteQuery = `
-SELECT e.cnpj
-FROM estabelecimento e
-LEFT JOIN estabelecimento_staging s ON s.cnpj = e.cnpj
-WHERE s.cnpj IS NULL`
-
-// rebuildQuery finds the full CNPJs whose document must be rebuilt: an
-// estabelecimento that is new or whose hash changed; or any estabelecimento of a
-// base whose empresa/simples row changed or whose socio set changed; or a CNPJ
-// whose secondary-CNAE or tax-regime set changed; or a CNPJ whose document shows
-// a reference entry (CNAE, motivo, município, país, natureza jurídica,
-// qualificação, IBGE code) that was added, removed or re-described, even if the
-// company's own rows are unchanged. Removed CNPJs (absent from staging) are
-// excluded by the final filter.
-const rebuildQuery = `
-WITH ref_changed AS (
-    SELECT 'cnae' AS tbl, codigo FROM ((SELECT codigo, descricao FROM cnae_staging EXCEPT SELECT codigo, descricao FROM cnae) UNION ALL (SELECT codigo, descricao FROM cnae EXCEPT SELECT codigo, descricao FROM cnae_staging)) d
-    UNION
-    SELECT 'motivo', codigo FROM ((SELECT codigo, descricao FROM motivo_staging EXCEPT SELECT codigo, descricao FROM motivo) UNION ALL (SELECT codigo, descricao FROM motivo EXCEPT SELECT codigo, descricao FROM motivo_staging)) d
-    UNION
-    SELECT 'municipio', codigo FROM ((SELECT codigo, descricao FROM municipio_staging EXCEPT SELECT codigo, descricao FROM municipio) UNION ALL (SELECT codigo, descricao FROM municipio EXCEPT SELECT codigo, descricao FROM municipio_staging)) d
-    UNION
-    SELECT 'pais', codigo FROM ((SELECT codigo, descricao FROM pais_staging EXCEPT SELECT codigo, descricao FROM pais) UNION ALL (SELECT codigo, descricao FROM pais EXCEPT SELECT codigo, descricao FROM pais_staging)) d
-    UNION
-    SELECT 'natureza_juridica', codigo FROM ((SELECT codigo, descricao FROM natureza_juridica_staging EXCEPT SELECT codigo, descricao FROM natureza_juridica) UNION ALL (SELECT codigo, descricao FROM natureza_juridica EXCEPT SELECT codigo, descricao FROM natureza_juridica_staging)) d
-    UNION
-    SELECT 'qualificacao', codigo FROM ((SELECT codigo, descricao FROM qualificacao_staging EXCEPT SELECT codigo, descricao FROM qualificacao) UNION ALL (SELECT codigo, descricao FROM qualificacao EXCEPT SELECT codigo, descricao FROM qualificacao_staging)) d
-    UNION
-    SELECT 'municipio', codigo_municipio FROM ((SELECT codigo_municipio, codigo_ibge FROM municipio_ibge_staging EXCEPT SELECT codigo_municipio, codigo_ibge FROM municipio_ibge) UNION ALL (SELECT codigo_municipio, codigo_ibge FROM municipio_ibge EXCEPT SELECT codigo_municipio, codigo_ibge FROM municipio_ibge_staging)) d
-),
-estab_ref_changed AS (
-    SELECT s.cnpj
-    FROM estabelecimento_staging s
-    WHERE s.cnae_fiscal IN (SELECT codigo FROM ref_changed WHERE tbl = 'cnae')
-       OR s.motivo_situacao_cadastral IN (SELECT codigo FROM ref_changed WHERE tbl = 'motivo')
-       OR s.codigo_municipio IN (SELECT codigo FROM ref_changed WHERE tbl = 'municipio')
-       OR s.codigo_pais IN (SELECT codigo FROM ref_changed WHERE tbl = 'pais')
-    UNION
-    SELECT c.cnpj
-    FROM estabelecimento_cnae_staging c
-    WHERE c.cnae IN (SELECT codigo FROM ref_changed WHERE tbl = 'cnae')
-),
-estab_changed AS (
-    SELECT s.cnpj
-    FROM estabelecimento_staging s
-    LEFT JOIN estabelecimento e ON e.cnpj = s.cnpj
-    WHERE e.cnpj IS NULL OR e.hash <> s.hash
-),
-base_changed AS (
-    SELECT s.cnpj_base
-    FROM empresa_staging s
-    LEFT JOIN empresa e ON e.cnpj_base = s.cnpj_base
-    WHERE e.cnpj_base IS NULL OR e.hash <> s.hash
-    UNION
-    SELECT s.cnpj_base
-    FROM simples_staging s
-    LEFT JOIN simples e ON e.cnpj_base = s.cnpj_base
-    WHERE e.cnpj_base IS NULL OR e.hash <> s.hash
-    UNION
-    SELECT cnpj_base FROM (
-        SELECT cnpj_base, identificador_de_socio, nome_socio, cnpj_cpf_do_socio, codigo_qualificacao_socio, data_entrada_sociedade, codigo_pais, cpf_representante_legal, nome_representante_legal, codigo_qualificacao_representante_legal, codigo_faixa_etaria FROM socio_staging
-        EXCEPT
-        SELECT cnpj_base, identificador_de_socio, nome_socio, cnpj_cpf_do_socio, codigo_qualificacao_socio, data_entrada_sociedade, codigo_pais, cpf_representante_legal, nome_representante_legal, codigo_qualificacao_representante_legal, codigo_faixa_etaria FROM socio
-    ) socio_added
-    UNION
-    SELECT cnpj_base FROM (
-        SELECT cnpj_base, identificador_de_socio, nome_socio, cnpj_cpf_do_socio, codigo_qualificacao_socio, data_entrada_sociedade, codigo_pais, cpf_representante_legal, nome_representante_legal, codigo_qualificacao_representante_legal, codigo_faixa_etaria FROM socio
-        EXCEPT
-        SELECT cnpj_base, identificador_de_socio, nome_socio, cnpj_cpf_do_socio, codigo_qualificacao_socio, data_entrada_sociedade, codigo_pais, cpf_representante_legal, nome_representante_legal, codigo_qualificacao_representante_legal, codigo_faixa_etaria FROM socio_staging
-    ) socio_removed
-    UNION
-    SELECT cnpj_base
-    FROM empresa_staging
-    WHERE codigo_natureza_juridica IN (SELECT codigo FROM ref_changed WHERE tbl = 'natureza_juridica')
-    UNION
-    SELECT cnpj_base
-    FROM socio_staging
-    WHERE codigo_pais IN (SELECT codigo FROM ref_changed WHERE tbl = 'pais')
-       OR codigo_qualificacao_socio IN (SELECT codigo FROM ref_changed WHERE tbl = 'qualificacao')
-       OR codigo_qualificacao_representante_legal IN (SELECT codigo FROM ref_changed WHERE tbl = 'qualificacao')
-),
-cnae_changed AS (
-    SELECT cnpj FROM (
-        SELECT cnpj, cnae, ordem FROM estabelecimento_cnae_staging
-        EXCEPT
-        SELECT cnpj, cnae, ordem FROM estabelecimento_cnae
-    ) cnae_added
-    UNION
-    SELECT cnpj FROM (
-        SELECT cnpj, cnae, ordem FROM estabelecimento_cnae
-        EXCEPT
-        SELECT cnpj, cnae, ordem FROM estabelecimento_cnae_staging
-    ) cnae_removed
-),
-regime_changed AS (
-    SELECT cnpj FROM (
-        SELECT cnpj, tipo, ano, cnpj_da_scp, forma_de_tributacao, quantidade_de_escrituracoes FROM regime_tributario_staging
-        EXCEPT
-        SELECT cnpj, tipo, ano, cnpj_da_scp, forma_de_tributacao, quantidade_de_escrituracoes FROM regime_tributario
-    ) regime_added
-    UNION
-    SELECT cnpj FROM (
-        SELECT cnpj, tipo, ano, cnpj_da_scp, forma_de_tributacao, quantidade_de_escrituracoes FROM regime_tributario
-        EXCEPT
-        SELECT cnpj, tipo, ano, cnpj_da_scp, forma_de_tributacao, quantidade_de_escrituracoes FROM regime_tributario_staging
-    ) regime_removed
-),
-affected AS (
-    SELECT cnpj FROM estab_changed
-    UNION
-    SELECT s.cnpj FROM estabelecimento_staging s JOIN base_changed b ON b.cnpj_base = s.cnpj_base
-    UNION
-    SELECT cnpj FROM cnae_changed
-    UNION
-    SELECT cnpj FROM regime_changed
-    UNION
-    SELECT cnpj FROM estab_ref_changed
-)
-SELECT cnpj FROM affected
-WHERE cnpj IN (SELECT cnpj FROM estabelecimento_staging)`
-
 // PrepareStaging creates (if needed) and truncates the UNLOGGED staging tables.
 func (p *PostgreSQL) PrepareStaging() error {
 	s, err := p.renderTemplate("staging")
@@ -137,33 +14,6 @@ func (p *PostgreSQL) PrepareStaging() error {
 	}
 	if _, err := p.pool.Exec(context.Background(), s); err != nil {
 		return fmt.Errorf("error preparing staging tables: %w", err)
-	}
-	return nil
-}
-
-// ComputeDelta diffs the staging tables against the live tables and returns the
-// CNPJs to rebuild and to delete. It only reads; applying the changes is a
-// separate step.
-func (p *PostgreSQL) ComputeDelta(ctx context.Context) (rebuild, deletes []string, err error) {
-	rebuild, err = p.queryCNPJs(ctx, rebuildQuery)
-	if err != nil {
-		return nil, nil, fmt.Errorf("could not compute the rebuild set: %w", err)
-	}
-	deletes, err = p.queryCNPJs(ctx, deleteQuery)
-	if err != nil {
-		return nil, nil, fmt.Errorf("could not compute the delete set: %w", err)
-	}
-	return rebuild, deletes, nil
-}
-
-// DeleteDocuments removes the JSONB documents of the given CNPJs.
-func (p *PostgreSQL) DeleteDocuments(ctx context.Context, ids []string) error {
-	if len(ids) == 0 {
-		return nil
-	}
-	q := fmt.Sprintf("DELETE FROM %s WHERE %s = ANY($1)", p.CompanyTableName, idFieldName)
-	if _, err := p.pool.Exec(ctx, q, ids); err != nil {
-		return fmt.Errorf("could not delete documents: %w", err)
 	}
 	return nil
 }
@@ -202,7 +52,6 @@ var (
 // the differences: hashed entities are upserted (new/changed) and pruned
 // (removed); child collections are replaced for the parents whose set changed;
 // reference entries are upserted when their value changed and pruned when gone.
-// It must run after ComputeDelta, which needs the old reference tables.
 func (p *PostgreSQL) ApplyDelta(ctx context.Context) error {
 	for _, t := range []struct {
 		name string

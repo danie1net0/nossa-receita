@@ -51,24 +51,6 @@ func toBool(v string) *bool {
 
 type date time.Time
 
-func (d *date) UnmarshalJSON(b []byte) error {
-	s := strings.Trim(string(b), `"`)
-	if s == "" || s == "null" {
-		return nil
-	}
-	t, err := time.Parse(dateOutputFormat, s)
-	if err != nil {
-		return err
-	}
-	*d = date(t)
-	return nil
-}
-
-func (d *date) MarshalJSON() ([]byte, error) {
-	t := time.Time(*d)
-	return []byte(`"` + t.Format(dateOutputFormat) + `"`), nil
-}
-
 // toDate expects a date as string in the format YYYYMMDD (that is the format
 // used by the Federal Revenue in their CSV files).
 func toDate(v string) (*date, error) {

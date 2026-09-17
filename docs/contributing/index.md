@@ -1,10 +1,9 @@
 # Introdução
 
-Os arquivos estão organizados em pacotes Go, sendo esses os três principais:
+Os arquivos estão organizados em pacotes Go, sendo esses os dois principais:
 
 1. `transform/` é um <abbr title="Extract, Transform, Load">ETL</abbr> que processa os arquivos da Receita Federal e salva os dados no banco de dados — entenda melhor sobre essa etapa lendo sobre os [detalhes do <abbr title="Extract, Transform, Load">ETL</abbr>](etl.md)
-1. `db/` implementação do _backend_ de banco de dados, ou seja, implementa as interfaces necessárias pelo ETL e pela API no PostgreSQL
-1. `api/` a API web que serve os dados do projeto para o público
+1. `db/` implementação do _backend_ de banco de dados, ou seja, implementa as interfaces necessárias pelo ETL e pela atualização incremental no PostgreSQL
 
 Escreva testes e rode os testes, use autoformatação e _linter_:
 

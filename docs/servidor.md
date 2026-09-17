@@ -26,7 +26,7 @@ $ minha-receita provision root@200.100.0.1
 
 O comando cria dois usuários no Postgres: `etl` (com permissões de escrita) e `web` (apenas leitura), ambos tem senhas distintas e aleatórias que são exibidas apenas uma única vez ao final do comando.
 
-As URIs exibidas podem ser usadas nas variáveis `DATABASE_URL` do ETL e da API web.
+As URIs exibidas podem ser usadas na variável `DATABASE_URL`: a do `etl` para carregar e atualizar os dados, a do `web` para consultas somente leitura.
 
 ## Dados
 
@@ -50,13 +50,13 @@ A fonte oficial desses arquivos é sempre o [Portal de Dados Abertos](https://da
 
 ## Tratamento dos dados
 
-O comando `transform` transforma os arquivos para o formato JSON, consolidando as informações de todos os arquivos CSV. Esse JSON é armazenado diretamente no banco de dados. Para tanto, é preciso criar a tabela no banco de dados com o comando `create` (o comando `drop` pode ser utilizado para excluir essa mesma tabela).
+O comando `transform` carrega os arquivos CSV nas tabelas relacionais do banco de dados (descritas no [dicionário de dados](dicionario.md)). Para tanto, é preciso criar as tabelas com o comando `create` (o comando `drop` pode ser utilizado para excluí-las).
 
 Para especificar onde ficam os arquivos originais da Receita Federal e do Tesouro Nacional, o comando aceita como argumento `--directory` (ou `-d`), sendo o padrão `data/`.
 
 
 !!! tip "Atualização incremental"
-    O comando `update` aplica um novo snapshot mensal de forma incremental: carrega os dados em tabelas de _staging_, compara com os dados atuais por _hash_, aplica apenas as diferenças (inserções, alterações e remoções) e refaz apenas os documentos JSON afetados — em vez de recriar o banco inteiro. A API web detecta a mudança e atualiza o _cache_ e o _bloom filter_ sem reinício. O `transform` (recarga completa) segue sendo usado para o _bootstrap_ inicial.
+    O comando `update` aplica um novo snapshot mensal de forma incremental: carrega os dados em tabelas de _staging_, compara com os dados atuais por _hash_, e aplica apenas as diferenças (inserções, alterações e remoções) — em vez de recriar o banco inteiro. O `transform` (recarga completa) segue sendo usado para o _bootstrap_ inicial.
 
 ### Exemplos de uso
 
@@ -82,25 +82,6 @@ $ docker compose run --rm minha-receita create
 $ docker compose run --rm minha-receita transform -d /mnt/data/
 ```
 
-### Questões de privacidade
+### Dados pessoais
 
-Assim como o [`socios-brasil`](https://github.com/turicas/socios-brasil#privacidade) removemos alguns dados para evitar exposição de dados sensíveis de pessoas físicas, bem como SPAM. A opção `--no-privacy` do comando `transform` remove essa precaução de privacidade.
-
-
-## Iniciando a API web
-
-A API web é uma aplicação super simples que, por padrão, ficará disponível em [`localhost:8000`](http://localhost:8000).
-
-### Exemplos de uso
-
-Sem Docker, com a variável de ambiente `DATABASE_URL` configurada:
-
-```console
-$ minha-receita api
-```
-
-Com Docker:
-
-```console
-$ docker compose up
-```
+Os dados são gravados como a Receita Federal os publica, incluindo dados de pessoas físicas que constam nos arquivos (por exemplo, e-mails, nomes de sócios, CPFs parcialmente mascarados pela própria Receita e CPFs que aparecem em nomes fantasia de empresários individuais). Leve isso em conta ao dar acesso ao banco de dados.

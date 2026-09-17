@@ -1,37 +1,29 @@
 # Perguntas frequentes
 
-## Como buscar por outros campos que não CNAE ou UF?
+## Como consultar os dados?
 
-Isso encarece computacionalmente o _Minha Receita_ (consultas mais pesadas ao banco de dados, paginação, etc.), ou seja:
+[Criando o seu banco de dados localmente](servidor.md), as consultas são feitas diretamente no PostgreSQL, juntando as tabelas descritas no [dicionário de dados](dicionario.md). Por exemplo:
 
-* ou aumentaria os custos para manter a API no ar (e as doações não cobrem nem os custos atuais)
-* ou comprometeria a disponibilidade da API.
-
-Para evitar isso, a API limita os filtros disponíveis.
-
-No entanto, [criando o seu banco de dados localmente](servidor.md), é possível utilizar consultas diratemente no PostgreSQL, como por exemplo:
-
-* busca por situação cadastral com `SELECT * FROM cnpj WHERE json -> 'descricao_situacao_cadastral' = '"ATIVA"' :: jsonb`
-* busca por código da faixa etária dos quadro societário:
+* estabelecimentos ativos em uma UF, com a descrição da situação cadastral:
 
 ```sql
-SELECT *
-FROM cnpj
-WHERE jsonb_path_query_array(json, '$.qsa[*].codigo_faixa_etaria') @> '[5]'
+SELECT e.cnpj, em.razao_social, s.descricao AS situacao_cadastral
+FROM estabelecimento e
+JOIN empresa em ON em.cnpj_base = e.cnpj_base
+JOIN situacao_cadastral s ON s.codigo = e.situacao_cadastral
+WHERE e.uf = 'SP' AND e.situacao_cadastral = 2
 ```
 
-Você pode ainda criar índices para essas buscas ficarem mais rápidas com o comando `extra-indexes`. O comando aceita um ou mais índices, e o nome dos índices é composto pelas chaves do JSON separadas por `.`. Por exemplo, para criar um índice para a UF e para os códigos dos CNAEs secundários:
+* empresas com sócios em uma faixa etária:
 
-```console
-$ minha-receita extra-indexes uf cnaes_secundarios.codigo
+```sql
+SELECT DISTINCT em.cnpj_base, em.razao_social
+FROM socio so
+JOIN empresa em ON em.cnpj_base = so.cnpj_base
+WHERE so.codigo_faixa_etaria = 5
 ```
 
-Esses índices no JSON não são criados por padrão: a busca da API filtra pelas tabelas relacionais (`estabelecimento`, `empresa`, `socio`, `estabelecimento_cnae`), que já têm seus próprios índices. Crie-os apenas se for fazer consultas SQL diretamente no JSON. Na base completa, cada um leva dezenas de minutos para ser criado.
-
-Para referência, no PostgreSQL:
-
-* um índice criado apenas com o código do CNAE fiscal ocupou certa de 2Gb em disco
-* um índice composto com UF e código do município ocupou cerca de 1,5Gb em disco.
+As colunas mais usadas em filtros (`uf`, `cnae_fiscal`, `codigo_municipio`, `cnpj_base`, CNAEs secundários, CPF/CNPJ de sócios e natureza jurídica) já têm índices.
 
 ## Como consigo um CSV único dos dados?
 
@@ -42,18 +34,23 @@ Caso queira gerar um CSV a partir dos dados consolidados, com ou sem filtragem d
 ```sql
 COPY (
   SELECT
-      id AS cnpj,
-      json->>'razao_social' AS razao_social,
-      json->>'nome_fantasia' AS nome_fantasia
+      e.cnpj,
+      em.razao_social,
+      e.nome_fantasia,
+      m.descricao AS municipio
       -- adicione os campos que desejar
-  -- WHERE uf = '…' caso queira filtar, por exemplo
-  FROM cnpj
+  FROM estabelecimento e
+  JOIN empresa em ON em.cnpj_base = e.cnpj_base
+  LEFT JOIN municipio m ON m.codigo = e.codigo_municipio
+  -- WHERE e.uf = '…' caso queira filtrar, por exemplo
 )
 TO 'nome-do-arquivo.csv' DELIMITER ',' CSV HEADER;
 ```
 
-## Com qual periodicidade a API é atualizada?
+## Como saber de quando são os dados carregados?
 
-A atualização é manual e normalmente ocorre alguns dias depois de a Receita Federal liberar uma nova versão dos dados — salvo quando a Receita Federal divulga dados absurdos, como empresas abertas no ano [202](https://twitter.com/cuducos/status/1646684441979281410) ou [4100](https://twitter.com/cuducos/status/1479078346248097793).
+A data de divulgação pela Receita Federal do snapshot carregado fica na tabela `meta`:
 
-Para saber a data de divulgação pela Receita Federal dos dados disponíveis no _Minha Receita_, [consulte a própria API](como-usar.md#endpoints-auxiliares).
+```sql
+SELECT value FROM meta WHERE key = 'updated-at';
+```

@@ -8,7 +8,7 @@ COPY . .
 RUN go build -o /usr/bin/minha-receita
 
 FROM debian:trixie-slim
-LABEL org.opencontainers.image.description="Sua API web para consulta de informações do CNPJ da Receita Federal"
+LABEL org.opencontainers.image.description="ETL e atualização incremental dos dados do CNPJ da Receita Federal em PostgreSQL"
 LABEL org.opencontainers.image.source="https://codeberg.org/cuducos/minha-receita"
 LABEL org.opencontainers.image.title="Minha Receita"
 
@@ -30,4 +30,4 @@ RUN apt-get update && \
 
 COPY --from=build /usr/bin/minha-receita /usr/bin/minha-receita
 ENTRYPOINT ["/usr/bin/minha-receita"]
-CMD ["api"]
+CMD ["--help"]

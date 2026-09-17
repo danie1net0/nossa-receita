@@ -19,15 +19,6 @@ func (db *testDB) PreLoad() error {
 	return nil
 }
 
-func (db *testDB) CreateCompanies(_ context.Context, companies [][]string) error {
-	db.lock.Lock()
-	defer db.lock.Unlock()
-	for _, c := range companies {
-		db.data[c[0]] = c[1]
-	}
-	return nil
-}
-
 func (db *testDB) PostLoad() error {
 	return nil
 }
@@ -49,7 +40,7 @@ func (db *testDB) CopyRelational(_ context.Context, table string, _ []string, ro
 	return nil
 }
 
-func TestWriteJSONs(t *testing.T) {
+func TestLoadEstabelecimentos(t *testing.T) {
 	ctx := context.Background()
 	srcs := sources()
 	kv, err := newBadger(t.TempDir(), false)
@@ -66,21 +57,16 @@ func TestWriteJSONs(t *testing.T) {
 	if err := db.PreLoad(); err != nil {
 		t.Fatalf("expected no error calling PreLoad, got %s", err)
 	}
-	err = writeJSONs(ctx, srcs, kv, db, 16, 8192, ext, false, "", true)
-	if err != nil {
+	if err := loadEstabelecimentos(ctx, srcs, kv, db, 8192, ext, ""); err != nil {
 		t.Fatalf("expected no error processing test data, got %s", err)
 	}
 	db.lock.Lock()
 	defer db.lock.Unlock()
-	if len(db.data) != 1 {
-		t.Errorf("expected 1 company to be persisted, got %d", len(db.data))
-	}
-	exp := "33683111000280"
-	if _, ok := db.data[exp]; !ok {
-		t.Errorf("expected CNPJ %s to be persisted, got nil", exp)
-	}
 	if got := db.relational["estabelecimento"]; got != 1 {
 		t.Errorf("expected 1 estabelecimento to be persisted, got %d", got)
+	}
+	if got := db.relational["estabelecimento_cnae"]; got == 0 {
+		t.Error("expected the secondary CNAEs to be persisted")
 	}
 }
 

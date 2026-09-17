@@ -12,7 +12,7 @@ const (
 	help           = `Minha Receita.
 
 Toolbox to manage Minha Receita, including tools to handle extract, transform
-and load data, manage the PostgreSQL instance, and to spin up the web server.
+and load data, and to manage the PostgreSQL instance.
 
 See --help for more details.
 `
@@ -66,31 +66,14 @@ func addDatabase(c *cobra.Command, args *DatabaseArgs) *cobra.Command {
 	return c
 }
 
-var createExtraIndexesCmd = &cobra.Command{
-	Use:   "extra-indexes <index1> [index2 …]",
-	Short: "Creates extra indexes in the company fields",
-	Args:  cobra.MinimumNArgs(1),
-	RunE: func(_ *cobra.Command, idxs []string) error {
-		db, err := loadDatabase(&args)
-		if err != nil {
-			return fmt.Errorf("could not find database: %w", err)
-		}
-		defer db.Close()
-		return db.CreateExtraIndexes(idxs)
-	},
-}
-
 // CLI returns the root command from Cobra CLI tool.
 func CLI() *cobra.Command {
 	for _, c := range []*cobra.Command{createCmd, dropCmd, transformCmd} {
 		addDatabase(c, &args)
 	}
 	rootCmd.AddCommand(
-		apiCLI(),
-		graphCLI(),
 		createCmd,
 		dropCmd,
-		createExtraIndexesCmd,
 		addDataDir(cleanupTempCmd),
 		addDataDir(downloadCLI()),
 		addDataDir(transformCLI()),

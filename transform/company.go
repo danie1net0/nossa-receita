@@ -1,137 +1,89 @@
 package transform
 
 import (
-	"bytes"
-	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 )
 
-func maskCPF(name string) string {
-	if len(name) < 11 {
-		return name
-	}
-	tail := name[len(name)-11:]
-	for _, c := range tail {
-		if c < '0' || c > '9' {
-			return name
-		}
-	}
-	if len(name) > 11 {
-		prev := name[len(name)-12]
-		if prev >= '0' && prev <= '9' {
-			return name
-		}
-	}
-	return name[:len(name)-11] + "***" + tail[3:8] + "***"
-}
-
 type CNAE struct {
-	Codigo    int    `json:"codigo"`
-	Descricao string `json:"descricao"`
+	Codigo    int
+	Descricao string
 }
 
 type TaxRegime struct {
-	Ano                       int     `json:"ano"`
-	CNPJDaSCP                 *string `json:"cnpj_da_scp"`
-	FormaDeTributação         string  `json:"forma_de_tributacao"`
-	QuantidadeDeEscrituracoes int     `json:"quantidade_de_escrituracoes"`
+	Ano                       int
+	CNPJDaSCP                 *string
+	FormaDeTributação         string
+	QuantidadeDeEscrituracoes int
 }
 
 type Partner struct {
-	IdentificadorDeSocio                 *int    `json:"identificador_de_socio"`
-	NomeSocio                            string  `json:"nome_socio"`
-	CNPJCPFDoSocio                       string  `json:"cnpj_cpf_do_socio"`
-	CodigoQualificacaoSocio              *int    `json:"codigo_qualificacao_socio"`
-	QualificaoSocio                      *string `json:"qualificacao_socio"`
-	DataEntradaSociedade                 *date   `json:"data_entrada_sociedade"`
-	CodigoPais                           *int    `json:"codigo_pais"`
-	Pais                                 *string `json:"pais"`
-	CPFRepresentanteLegal                string  `json:"cpf_representante_legal"`
-	NomeRepresentanteLegal               string  `json:"nome_representante_legal"`
-	CodigoQualificacaoRepresentanteLegal *int    `json:"codigo_qualificacao_representante_legal"`
-	QualificacaoRepresentanteLegal       *string `json:"qualificacao_representante_legal"`
-	CodigoFaixaEtaria                    *int    `json:"codigo_faixa_etaria"`
-	FaixaEtaria                          *string `json:"faixa_etaria"`
+	IdentificadorDeSocio                 *int
+	NomeSocio                            string
+	CNPJCPFDoSocio                       string
+	CodigoQualificacaoSocio              *int
+	QualificaoSocio                      *string
+	DataEntradaSociedade                 *date
+	CodigoPais                           *int
+	Pais                                 *string
+	CPFRepresentanteLegal                string
+	NomeRepresentanteLegal               string
+	CodigoQualificacaoRepresentanteLegal *int
+	QualificacaoRepresentanteLegal       *string
+	CodigoFaixaEtaria                    *int
+	FaixaEtaria                          *string
 }
 
 type Company struct {
-	CNPJ                             string      `json:"cnpj"`
-	IdentificadorMatrizFilial        *int        `json:"identificador_matriz_filial"`
-	DescricaoMatrizFilial            *string     `json:"descricao_identificador_matriz_filial"`
-	NomeFantasia                     string      `json:"nome_fantasia"`
-	SituacaoCadastral                *int        `json:"situacao_cadastral"`
-	DescricaoSituacaoCadastral       *string     `json:"descricao_situacao_cadastral"`
-	DataSituacaoCadastral            *date       `json:"data_situacao_cadastral"`
-	MotivoSituacaoCadastral          *int        `json:"motivo_situacao_cadastral"`
-	DescricaoMotivoSituacaoCadastral *string     `json:"descricao_motivo_situacao_cadastral"`
-	NomeCidadeNoExterior             string      `json:"nome_cidade_no_exterior"`
-	CodigoPais                       *int        `json:"codigo_pais"`
-	Pais                             *string     `json:"pais"`
-	DataInicioAtividade              *date       `json:"data_inicio_atividade"`
-	CNAEFiscal                       *int        `json:"cnae_fiscal"`
-	CNAEFiscalDescricao              *string     `json:"cnae_fiscal_descricao"`
-	DescricaoTipoDeLogradouro        string      `json:"descricao_tipo_de_logradouro"`
-	Logradouro                       string      `json:"logradouro"`
-	Numero                           string      `json:"numero"`
-	Complemento                      string      `json:"complemento"`
-	Bairro                           string      `json:"bairro"`
-	CEP                              string      `json:"cep"`
-	UF                               string      `json:"uf"`
-	CodigoMunicipio                  *int        `json:"codigo_municipio"`
-	CodigoMunicipioIBGE              *int        `json:"codigo_municipio_ibge"`
-	Municipio                        *string     `json:"municipio"`
-	Telefone1                        string      `json:"ddd_telefone_1"`
-	Telefone2                        string      `json:"ddd_telefone_2"`
-	Fax                              string      `json:"ddd_fax"`
-	Email                            *string     `json:"email"`
-	SituacaoEspecial                 string      `json:"situacao_especial"`
-	DataSituacaoEspecial             *date       `json:"data_situacao_especial"`
-	OpcaoPeloSimples                 *bool       `json:"opcao_pelo_simples"`
-	DataOpcaoPeloSimples             *date       `json:"data_opcao_pelo_simples"`
-	DataExclusaoDoSimples            *date       `json:"data_exclusao_do_simples"`
-	OpcaoPeloMEI                     *bool       `json:"opcao_pelo_mei"`
-	DataOpcaoPeloMEI                 *date       `json:"data_opcao_pelo_mei"`
-	DataExclusaoDoMEI                *date       `json:"data_exclusao_do_mei"`
-	RazaoSocial                      string      `json:"razao_social"`
-	CodigoNaturezaJuridica           *int        `json:"codigo_natureza_juridica"`
-	NaturezaJuridica                 *string     `json:"natureza_juridica"`
-	QualificacaoDoResponsavel        *int        `json:"qualificacao_do_responsavel"`
-	CapitalSocial                    *float32    `json:"capital_social"`
-	CodigoPorte                      *int        `json:"codigo_porte"`
-	Porte                            *string     `json:"porte"`
-	EnteFederativoResponsavel        string      `json:"ente_federativo_responsavel"`
-	QuadroSocietario                 []Partner   `json:"qsa"`
-	CNAESecundarios                  []CNAE      `json:"cnaes_secundarios"`
-	RegimeTributario                 []TaxRegime `json:"regime_tributario"`
-}
-
-func (c *Company) withPrivacy() {
-	c.NomeFantasia = strings.TrimSpace(maskCPF(c.NomeFantasia))
-	c.Email = nil
-	if c.CodigoNaturezaJuridica != nil && c.NaturezaJuridica != nil && strings.Contains(strings.ToLower(*c.NaturezaJuridica), "individual") {
-		c.DescricaoTipoDeLogradouro = ""
-		c.Logradouro = ""
-		c.Numero = ""
-		c.Complemento = ""
-		c.Telefone1 = ""
-		c.Telefone2 = ""
-		c.Fax = ""
-	}
-}
-
-func (c *Company) JSON(p *sync.Pool) (string, error) {
-	b := p.Get().(*bytes.Buffer)
-	defer func() {
-		b.Reset()
-		p.Put(b)
-	}()
-	if err := json.MarshalWrite(b, c); err != nil {
-		return "", fmt.Errorf("error while mashaling company JSON: %w", err)
-	}
-	return b.String(), nil
+	CNPJ                             string
+	IdentificadorMatrizFilial        *int
+	DescricaoMatrizFilial            *string
+	NomeFantasia                     string
+	SituacaoCadastral                *int
+	DescricaoSituacaoCadastral       *string
+	DataSituacaoCadastral            *date
+	MotivoSituacaoCadastral          *int
+	DescricaoMotivoSituacaoCadastral *string
+	NomeCidadeNoExterior             string
+	CodigoPais                       *int
+	Pais                             *string
+	DataInicioAtividade              *date
+	CNAEFiscal                       *int
+	CNAEFiscalDescricao              *string
+	DescricaoTipoDeLogradouro        string
+	Logradouro                       string
+	Numero                           string
+	Complemento                      string
+	Bairro                           string
+	CEP                              string
+	UF                               string
+	CodigoMunicipio                  *int
+	CodigoMunicipioIBGE              *int
+	Municipio                        *string
+	Telefone1                        string
+	Telefone2                        string
+	Fax                              string
+	Email                            *string
+	SituacaoEspecial                 string
+	DataSituacaoEspecial             *date
+	OpcaoPeloSimples                 *bool
+	DataOpcaoPeloSimples             *date
+	DataExclusaoDoSimples            *date
+	OpcaoPeloMEI                     *bool
+	DataOpcaoPeloMEI                 *date
+	DataExclusaoDoMEI                *date
+	RazaoSocial                      string
+	CodigoNaturezaJuridica           *int
+	NaturezaJuridica                 *string
+	QualificacaoDoResponsavel        *int
+	CapitalSocial                    *float32
+	CodigoPorte                      *int
+	Porte                            *string
+	EnteFederativoResponsavel        string
+	QuadroSocietario                 []Partner
+	CNAESecundarios                  []CNAE
+	RegimeTributario                 []TaxRegime
 }
 
 func newCompany(log *slog.Logger, srcs map[string]*source, kv *kv, row []string) (*Company, error) {
