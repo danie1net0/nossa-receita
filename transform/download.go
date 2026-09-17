@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/avast/retry-go/v4"
 	"github.com/schollz/progressbar/v3"
@@ -34,6 +36,49 @@ const (
 
 	downloadRetries = 5
 )
+
+// downloadStallTimeout aborts (and retries) a download that received no data for
+// this long: the Receita's server sometimes keeps a connection open without
+// sending anything, which otherwise hangs the download forever.
+var downloadStallTimeout = 2 * time.Minute
+
+var errDownloadStalled = errors.New("no data received")
+
+// downloadClient gives up on a server that accepts the connection but never
+// answers; stalls in the middle of a body are handled by stallReader.
+var downloadClient = func() *http.Client {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.ResponseHeaderTimeout = time.Minute
+	return &http.Client{Transport: t}
+}()
+
+// stallReader cancels the request (through cancel) when no bytes arrive within
+// timeout, so a stuck body read returns an error instead of blocking forever.
+type stallReader struct {
+	r       io.Reader
+	timer   *time.Timer
+	timeout time.Duration
+}
+
+func newStallReader(r io.Reader, timeout time.Duration, cancel context.CancelCauseFunc) *stallReader {
+	return &stallReader{
+		r:       r,
+		timeout: timeout,
+		timer: time.AfterFunc(timeout, func() {
+			cancel(fmt.Errorf("%w for %s", errDownloadStalled, timeout))
+		}),
+	}
+}
+
+func (s *stallReader) Read(p []byte) (int, error) {
+	n, err := s.r.Read(p)
+	if n > 0 {
+		s.timer.Reset(s.timeout)
+	}
+	return n, err
+}
+
+func (s *stallReader) stop() { s.timer.Stop() }
 
 var yearMonth = regexp.MustCompile(`^\d{4}-\d{2}$`)
 
@@ -79,7 +124,7 @@ func (s *share) propfind(ctx context.Context, path string) ([]davEntry, error) {
 	}
 	req.SetBasicAuth(s.token, "")
 	req.Header.Set("Depth", "1")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := downloadClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -161,12 +206,14 @@ func (s *share) downloadFile(ctx context.Context, remotePath, dest string, size 
 	return retry.Do(
 		func() error {
 			u := s.base + "/" + strings.TrimLeft(remotePath, "/")
+			ctx, cancel := context.WithCancelCause(ctx)
+			defer cancel(nil)
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 			if err != nil {
 				return err
 			}
 			req.SetBasicAuth(s.token, "")
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := downloadClient.Do(req)
 			if err != nil {
 				return err
 			}
@@ -187,8 +234,14 @@ func (s *share) downloadFile(ctx context.Context, remotePath, dest string, size 
 			if bar != nil {
 				w = io.MultiWriter(f, bar)
 			}
-			if _, err := io.Copy(w, resp.Body); err != nil {
+			body := newStallReader(resp.Body, downloadStallTimeout, cancel)
+			_, err = io.Copy(w, body)
+			body.stop()
+			if err != nil {
 				_ = f.Close()
+				if cause := context.Cause(ctx); errors.Is(cause, errDownloadStalled) {
+					return fmt.Errorf("download of %s stalled: %w", remotePath, cause)
+				}
 				return err
 			}
 			if err := f.Close(); err != nil {
