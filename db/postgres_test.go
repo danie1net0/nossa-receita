@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"slices"
@@ -48,5 +49,43 @@ CREATE INDEX IF NOT EXISTS idx_a
 	}
 	if !slices.Equal(got, exp) {
 		t.Errorf("expected %q, got %q", exp, got)
+	}
+}
+
+func TestLoadDropsAndRestoresPrimaryKeys(t *testing.T) {
+	pg, err := setUpPostgres()
+	if err != nil {
+		t.Fatalf("expected no error setting up postgres, got %s", err)
+	}
+	defer func() {
+		if err := pg.Drop(); err != nil {
+			t.Errorf("expected no error dropping the tables, got %s", err)
+		}
+		pg.Close()
+	}()
+	tables := []string{"empresa", "estabelecimento", "simples", "socio", "estabelecimento_cnae", "regime_tributario"}
+	count := func() int {
+		t.Helper()
+		var n int
+		q := "SELECT count(*) FROM pg_constraint WHERE contype = 'p' AND conrelid::regclass::text = ANY($1)"
+		if err := pg.pool.QueryRow(context.Background(), q, tables).Scan(&n); err != nil {
+			t.Fatalf("expected no error counting primary keys, got %s", err)
+		}
+		return n
+	}
+	if n := count(); n != len(tables) {
+		t.Errorf("expected %d primary keys after post load, got %d", len(tables), n)
+	}
+	if err := pg.PreLoad(); err != nil {
+		t.Fatalf("expected no error on pre load, got %s", err)
+	}
+	if n := count(); n != 0 {
+		t.Errorf("expected no primary keys during the load, got %d", n)
+	}
+	if err := pg.PostLoad(); err != nil {
+		t.Fatalf("expected no error on post load, got %s", err)
+	}
+	if n := count(); n != len(tables) {
+		t.Errorf("expected %d primary keys after post load, got %d", len(tables), n)
 	}
 }

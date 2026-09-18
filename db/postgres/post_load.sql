@@ -14,6 +14,15 @@ ALTER TABLE socio SET LOGGED;
 ALTER TABLE estabelecimento_cnae SET LOGGED;
 ALTER TABLE regime_tributario SET LOGGED;
 
+-- Restore the primary keys dropped by pre_load (the incremental update relies
+-- on them). Keep this list in sync with create.sql/pre_load.sql.
+ALTER TABLE empresa ADD CONSTRAINT empresa_pkey PRIMARY KEY (cnpj_base);
+ALTER TABLE estabelecimento ADD CONSTRAINT estabelecimento_pkey PRIMARY KEY (cnpj);
+ALTER TABLE simples ADD CONSTRAINT simples_pkey PRIMARY KEY (cnpj_base);
+ALTER TABLE socio ADD CONSTRAINT socio_pkey PRIMARY KEY (id);
+ALTER TABLE estabelecimento_cnae ADD CONSTRAINT estabelecimento_cnae_pkey PRIMARY KEY (cnpj, cnae);
+ALTER TABLE regime_tributario ADD CONSTRAINT regime_tributario_pkey PRIMARY KEY (id);
+
 -- Rebuild the secondary indexes dropped by pre_load, now that the tables are
 -- fully loaded: one sort per index instead of per-row maintenance during the
 -- bulk COPY.
