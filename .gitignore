@@ -3,3 +3,5 @@
 data/
 minha-receita
 ~/data/.gitkeep
+.DS_Store
+minha-receita-etl-*.log
