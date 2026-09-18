@@ -16,6 +16,8 @@ $ git clone https://codeberg.org/cuducos/minha-receita.git
 
 O banco de dados completo ocupa cerca de 55Gb, com os índices. A máquina que faz o download e a transformação dos dados precisa de mais cerca de 30Gb temporários, e o `update` precisa de espaço para uma segunda cópia das tabelas (as de _staging_) enquanto roda.
 
+No fim da carga completa (`transform`), as tabelas são reescritas uma a uma para voltarem a ser duráveis, e as chaves primárias e os índices são recriados. Enquanto cada tabela é reescrita, a cópia antiga só é apagada ao final, então é preciso ter livre, além da base, espaço para uma segunda cópia da maior tabela (`estabelecimento`, cerca de 21Gb) e para as ordenações da criação dos índices: reserve ao menos 30Gb. No macOS, os _snapshots_ locais do Time Machine seguram o espaço de arquivos apagados ou reescritos; se o disco encher, libere-os com `sudo tmutil thinlocalsnapshots / 999999999999 4`.
+
 ### Banco de dados
 
 * O banco de dados gerado utiliza cerca de 55Gb
